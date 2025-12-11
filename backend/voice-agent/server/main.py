@@ -58,10 +58,56 @@ from pipecat.transports.daily.transport import DailyParams
 from prompts import get_system_prompt
 from pipecat.processors.transcript_processor import TranscriptProcessor 
 
+from pathlib import Path
+from PIL import Image
+from pipecat.frames.frames import OutputImageRawFrame
+
+from pipecat.frames import VideoFrame
+from PIL import Image
+import numpy as np
+import asyncio
+
 
 logger.info("✅ All components loaded successfully!")
 
 load_dotenv(override=True)
+
+data={
+    "images":[
+        {
+            "filepath":"/workspaces/MeetMyClone/backend/voice-agent/server/data/images/github_profile.png",
+            "purpose":"github profile of soham pirale for purpose of credibility building"
+        }
+    ]
+}
+
+async def send_avatar_image(pipeline, image_path: str):
+    # 1) Load and convert to RGB
+    img = Image.open(image_path).convert("RGB")
+    width, height = img.size
+
+    # 2) Get raw bytes
+    img_bytes = img.tobytes()  # RGB bytes
+
+    # 3) Wrap in OutputImageRawFrame
+    frame = OutputImageRawFrame(
+        image=img_bytes,
+        size=(width, height),
+        format="RGB",
+    )
+
+    # 4) Push into the pipeline DOWNSTREAM so it reaches transport.output()
+    await pipeline.push_frame(frame)
+
+async def send_static_image(task, image_path):
+    img = Image.open(image_path).convert("RGB")
+    arr = np.array(img)
+
+    frame = VideoFrame(arr, fps=1)   # 1 FPS is enough for static image
+
+    while True:
+        await task.queue_frames([frame])
+        await asyncio.sleep(1)       # send every 1s to keep stream alive
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
@@ -106,7 +152,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             stt,
             transcript_processor.user(),
             context_aggregator.user(),  # User responses
-            llm,  # LLM
+            # llm,  # LLM
             tts,  # TTS
             transport.output(),  # Transport bot output
             transcript_processor.assistant(),
@@ -125,10 +171,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        logger.info(f"Client connected")
+        logger.info(f"-------Client connected")
+        image_path = "/workspaces/MeetMyClone/backend/voice-agent/server/data/images/github_profile.png"
+
+        asyncio.create_task(send_static_image(task, image_path))
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
-        await task.queue_frames([LLMRunFrame()])
+        # await task.queue_frames([LLMRunFrame()])
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
@@ -153,6 +202,8 @@ async def bot(runner_args: RunnerArguments):
         "webrtc": lambda: TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
+            video_in_enabled=False,    # bot does NOT consume video
+            video_out_enabled=True,    # bot WILL produce video
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
             turn_analyzer=LocalSmartTurnAnalyzerV3(),
         ),
