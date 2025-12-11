@@ -69,6 +69,9 @@ from PIL import Image
 import numpy as np
 import asyncio
 
+import cv2
+
+
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
@@ -107,7 +110,7 @@ async def send_avatar_image(pipeline, image_path: str):
     # 4) Push into the pipeline DOWNSTREAM so it reaches transport.output()
     await pipeline.push_frame(frame)
 
-async def send_static_image(task, image_path):
+async def show_image(task, image_path):
     img = Image.open(image_path).convert("RGB")
     arr = np.array(img)
 
@@ -126,6 +129,37 @@ async def send_static_image(task, image_path):
         #await asyncio.sleep(1)       # send every 1s to keep stream alive
         #break
 
+async def show_video(task, video_path):
+    cap = cv2.VideoCapture(str(video_path))
+
+    if not cap.isOpened():
+        print("Error: Cannot open video file")
+        return
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    delay = 1.0 / fps if fps > 0 else 1/30
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # loop video from start
+            continue
+
+        # Convert BGR → RGB since cv2 uses BGR
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        h, w, c = frame_rgb.shape
+        size = (w, h)
+        buffer = frame_rgb.tobytes()
+
+        output_frame = OutputImageRawFrame(
+            image=buffer,
+            size=size,
+            format="RGB"
+        )
+
+        await task.queue_frames([output_frame])
+        await asyncio.sleep(delay)
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
@@ -194,9 +228,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         BASE_DIR = Path(__file__).parent
         IMAGE_PATH = BASE_DIR / "data" / "images" / "github_profile.png"
 
-
-
-        asyncio.create_task(send_static_image(task, IMAGE_PATH))
+        VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
+        
+        # asyncio.create_task(show_image(task, IMAGE_PATH))
+        asyncio.create_task(show_video(task, VIDEO_PATH))
+        
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
         # await task.queue_frames([LLMRunFrame()])
