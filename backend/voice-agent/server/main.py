@@ -62,10 +62,18 @@ from pathlib import Path
 from PIL import Image
 from pipecat.frames.frames import OutputImageRawFrame
 
-from pipecat.frames import VideoFrame
+#from pipecat.frames import VideoFrame
+#from pipecat.frames.image import ImageFrame
+from pipecat.frames.frames import OutputImageRawFrame
 from PIL import Image
 import numpy as np
 import asyncio
+
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
+IMAGE_PATH = BASE_DIR / "data" / "images" / "github_profile.png"
+
 
 
 logger.info("✅ All components loaded successfully!")
@@ -75,7 +83,7 @@ load_dotenv(override=True)
 data={
     "images":[
         {
-            "filepath":"/workspaces/MeetMyClone/backend/voice-agent/server/data/images/github_profile.png",
+            "filepath":"/data/images/github_profile.png",
             "purpose":"github profile of soham pirale for purpose of credibility building"
         }
     ]
@@ -103,11 +111,20 @@ async def send_static_image(task, image_path):
     img = Image.open(image_path).convert("RGB")
     arr = np.array(img)
 
-    frame = VideoFrame(arr, fps=1)   # 1 FPS is enough for static image
 
-    while True:
-        await task.queue_frames([frame])
-        await asyncio.sleep(1)       # send every 1s to keep stream alive
+    height, width, channels = arr.shape
+    size = (width, height)
+    data = arr.tobytes()
+
+    #frame = VideoFrame(arr, fps=1)   # 1 FPS is enough for static image
+    #frame = OutputImageRawFrame(arr)
+    frame = OutputImageRawFrame(image=data,size=size,format="RGB")
+    await task.queue_frames([frame])
+
+   # while True:
+        #await task.queue_frames([frame])
+        #await asyncio.sleep(1)       # send every 1s to keep stream alive
+        #break
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
@@ -172,9 +189,14 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         logger.info(f"-------Client connected")
-        image_path = "/workspaces/MeetMyClone/backend/voice-agent/server/data/images/github_profile.png"
+        #image_path = "/workspaces/MeetMyClone/backend/voice-agent/server/data/images/github_profile.png"
 
-        asyncio.create_task(send_static_image(task, image_path))
+        BASE_DIR = Path(__file__).parent
+        IMAGE_PATH = BASE_DIR / "data" / "images" / "github_profile.png"
+
+
+
+        asyncio.create_task(send_static_image(task, IMAGE_PATH))
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
         # await task.queue_frames([LLMRunFrame()])
