@@ -188,7 +188,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     initial_state={
         "video":{
-            "video_showing":False,
+            "video_showing":True,
             "video_paused":False,
             "filepath":""
         },
@@ -220,10 +220,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     events.on("image.stop_showing_image",on_stop_showing_image)
 
     
-    def pause_video(payload):
+    def pause_video():
         events.emit("video.pause_video",{})
     
-    def on_pause_video():
+    def on_pause_video(payload):
         initial_state['video']['video_paused']=True
         print('---------------VIDEO PAUSED-----------')
         
@@ -294,7 +294,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             await task.queue_frames([video_frame])
         
         
-            # ----- AUDIO FRAME (optional) -----
             if audio_out:
                 audio_bytes = ffmpeg.stdout.read(AUDIO_CHUNK_SIZE)
                 if audio_bytes:
@@ -302,6 +301,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                     await task.queue_frames([audio_frame])
 
             video_showing=initial_state['video']['video_showing']
+            video_paused=initial_state['video']['video_paused']
             await asyncio.sleep(delay)
 
     
