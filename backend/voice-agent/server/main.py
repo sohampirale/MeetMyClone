@@ -75,8 +75,9 @@ import subprocess
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
-IMAGE_PATH = BASE_DIR / "data" / "images" / "github_profile.png"
 
+from pipecat.frames.frames import Frame
+from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 
 
 logger.info("✅ All components loaded successfully!")
@@ -188,6 +189,35 @@ async def show_video(task, video_path,audio_out:bool=True):
 
         await asyncio.sleep(delay)
 
+#custom processors
+
+class GatedBufferProcessor(FrameProcessor):
+    def __init__(self):
+        super().__init__()
+        self._buffer = []
+        self._gate_open = True
+        
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+
+        if self._gate_open:
+            await self.push_frame(frame, direction)
+        else:
+            # Gate is closed - buffer the frame
+            self._buffer.append((frame, direction))
+
+    async def open_gate(self):
+        """Open the gate and flush all buffered frames."""
+        self._gate_open = True
+        for frame, direction in self._buffer:
+            await self.push_frame(frame, direction)
+        self._buffer.clear()
+
+    async def close_gate(self):
+        """Close the gate to start buffering again."""
+        self._gate_open = False
+
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
     
@@ -195,6 +225,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     user_name='Soham Pirale'
     stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
     transcript_processor = TranscriptProcessor() 
+    gated_buffer_processor=GatedBufferProcessor()
 
     tts = CartesiaTTSService(
         api_key=os.getenv("CARTESIA_API_KEY"),
@@ -229,6 +260,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             rtvi,  # RTVI processor
             stt,
             transcript_processor.user(),
+            gated_buffer_processor,
             context_aggregator.user(),  # User responses
             # llm,  # LLM
             tts,  # TTS
@@ -255,7 +287,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         BASE_DIR = Path(__file__).parent
         IMAGE_PATH = BASE_DIR / "data" / "images" / "github_profile.png"
 
-        VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
+        VIDEO_PATH= BASE_DIR / "data" / "videos" / "intro.mp4"
         
         # asyncio.create_task(show_image(task, IMAGE_PATH))
         asyncio.create_task(show_video(task, VIDEO_PATH))
