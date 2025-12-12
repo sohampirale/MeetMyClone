@@ -287,7 +287,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         BASE_DIR = Path(__file__).parent
         IMAGE_PATH = BASE_DIR / "data" / "images" / "github_profile.png"
 
-        VIDEO_PATH= BASE_DIR / "data" / "videos" / "intro.mp4"
+        VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
         
         # asyncio.create_task(show_image(task, IMAGE_PATH))
         asyncio.create_task(show_video(task, VIDEO_PATH))
