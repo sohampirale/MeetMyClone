@@ -76,7 +76,16 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 
-from pipecat.frames.frames import Frame
+from pipecat.frames.frames import (
+    Frame,
+    TranscriptionFrame, 
+    LLMContextFrame, 
+    LLMTextFrame,      # Most common for LLM output
+    LLMFullResponseStartFrame,
+    LLMFullResponseEndFrame, 
+    LLMMessagesFrame
+)
+
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 
 from pipecat.observers.base_observer import BaseObserver, FramePushed
@@ -189,13 +198,14 @@ class CustomProcessor(FrameProcessor):
 
     async def process_frame(self, frame: FramePushed, direction: FrameDirection):
         await self.push_frame(frame, direction)
-        if isinstance(frame, TranscriptionFrame) and not self.transcriptionFrameFound:
+        
+        if isinstance(frame, TranscriptionFrame) and  self.transcriptionFrameFound==False:
             self.transcriptionFrameFound=True
             print(f'TranscriptionFrame : {frame}')
-        elif isinstance(frame, LLMContextFrame) and not self.llmContextFrameFound:
+        elif isinstance(frame, LLMContextFrame) and  self.llmContextFrameFound==False:
             self.llmContextFrameFound=True            
             print(f'LLMContextFrame : {frame}')
-        elif isinstance(frame, LLMMessagesFrame) and not self.llmMessageFrameFound:
+        elif isinstance(frame, LLMMessagesFrame) and  self.llmMessageFrameFound==False:
             self.llmMessageFrameFound=True
             print(f'LLMMessage frame : {frame}')
                 
@@ -252,11 +262,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         print(f"-----------------INSIDE event handler of 'image.stop_showing_image'")
         events.emit('image.show_avatar',{})
         
-
-
     events.on("image.stop_showing_image",on_stop_showing_image)
 
-    
     def pause_video():
         events.emit("video.pause_video",{})
     
@@ -266,7 +273,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         
     events.on("video.pause_video",on_pause_video)
         
-    
     def stop_video():
         events.emit('video.stop_video',{})
         
@@ -283,7 +289,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         
     events.on("video.stop_video",on_stop_video)
         
-        
     def show_avatar():
         events.emit('image.show_avatar',{})
         
@@ -298,8 +303,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         asyncio.create_task(show_image(task,IMAGE_PATH))
     
     events.on("image.show_avatar",on_show_avatar)
-    
-    
+      
     def start_video_at_timestamp(start_time=0):
         events.emit('video.start_video_at_timestamp',{
             "start_time":start_time
@@ -335,6 +339,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         
     custom_observer = CustomObserver()
     custom_processor= CustomProcessor()
+    
     async def show_video(task, video_path,start_time=0,audio_out:bool=True):
         
         cap = cv2.VideoCapture(str(video_path))
