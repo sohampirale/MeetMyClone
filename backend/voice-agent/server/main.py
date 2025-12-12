@@ -87,6 +87,8 @@ from pyee import EventEmitter
 from playwright.async_api import async_playwright
 from io import BytesIO
 
+from pipecat.frames.frames import TTSSpeakFrame
+
 
 logger.info("✅ All components loaded successfully!")
 
@@ -290,11 +292,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         video_task=asyncio.create_task(show_video(task,filepath,start_time))
         
         print(f'------VIDEO RESTARTED AT TIMESTAMP : {start_time}-------')
-        
-        
-        
+         
     events.on("video.start_video_at_timestamp",on_start_video_at_timestamp)
-        
         
     custom_observer = CustomObserver()
     
@@ -375,7 +374,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             video_paused=initial_state['video']['video_paused']
             await asyncio.sleep(delay)
 
-    
     async def show_webpage(task, url, refresh_rate=0.3):
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
@@ -500,6 +498,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     # loop.call_later(25, lambda: start_video_at_timestamp(5))
      
     loop.call_later(15, lambda: asyncio.create_task(show_webpage('https://google.com')))
+    loop.call_later(15, lambda: asyncio.create_task(tts.push_frame(TTSSpeakFrame('This message is pushed by the STT frame'))))
      
     
     await runner.run(task)
