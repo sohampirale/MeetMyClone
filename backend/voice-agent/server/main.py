@@ -79,6 +79,10 @@ BASE_DIR = Path(__file__).parent
 from pipecat.frames.frames import Frame
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 
+from pipecat.observers.base_observer import BaseObserver, FramePushed
+from pipecat.frames.frames import StartInterruptionFrame
+
+
 
 logger.info("✅ All components loaded successfully!")
 
@@ -115,20 +119,13 @@ async def show_image(task, image_path:str):
     img = Image.open(image_path).convert("RGB")
     arr = np.array(img)
 
-
     height, width, channels = arr.shape
     size = (width, height)
     data = arr.tobytes()
 
-    #frame = VideoFrame(arr, fps=1)   # 1 FPS is enough for static image
-    #frame = OutputImageRawFrame(arr)
     frame = OutputImageRawFrame(image=data,size=size,format="RGB")
     await task.queue_frames([frame])
 
-   # while True:
-        #await task.queue_frames([frame])
-        #await asyncio.sleep(1)       # send every 1s to keep stream alive
-        #break
 
 
 #custom processors
@@ -164,8 +161,27 @@ class GatedBufferProcessor(FrameProcessor):
         print('Closing the gate')
         self._gate_open = False
 
+
+class CustomObserver(BaseObserver):
+    async def on_push_frame(self, data: FramePushed):
+        print('inside on_push_frame of Observer')
+        print(f'data : ',data)
+
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
+    
+    initial_state={
+        "video":{
+            "play_video":False,
+            "filepath":""
+        },
+        "image":{
+            "show_image":False,
+            "filepath":""
+        }
+    }
+    
+    custom_observer = CustomObserver()
     
     async def show_video(task, video_path,audio_out:bool=True):
         cap = cv2.VideoCapture(str(video_path))
@@ -288,7 +304,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
-        observers=[RTVIObserver(rtvi)],
+        observers=[RTVIObserver(rtvi),custom_observer],
     )
 
     @transport.event_handler("on_client_connected")
