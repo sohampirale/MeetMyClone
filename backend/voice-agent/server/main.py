@@ -378,7 +378,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
             page = await browser.new_page()
-            await page.goto(url)
+
+            await page.goto(url,wait_until="domcontentloaded", timeout=60000)
+            print('INSIDE show_webpage')
 
             while True:
                 # take screenshot
@@ -493,7 +495,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     # loop.call_later(8, lambda: pause_video())
     
-    loop.call_later(10, lambda: stop_video())
+    loop.call_later(5, lambda: stop_video())
     
     # loop.call_later(25, lambda: start_video_at_timestamp(5))
      
