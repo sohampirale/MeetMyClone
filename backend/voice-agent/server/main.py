@@ -183,7 +183,7 @@ async def show_video(task, video_path,audio_out:bool=True):
         if audio_out:
             audio_bytes = ffmpeg.stdout.read(AUDIO_CHUNK_SIZE)
             if audio_bytes:
-                audio_frame = OutputAudioRawFrame(audio_bytes, 16000)
+                audio_frame = OutputAudioRawFrame(audio=audio_bytes, sample_rate=16000,num_channels=1)
                 await task.queue_frames([audio_frame])
 
         await asyncio.sleep(delay)
