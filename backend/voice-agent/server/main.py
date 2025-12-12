@@ -190,7 +190,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         "video":{
             "video_showing":True,
             "video_paused":False,
-            "filepath":""
+            "filepath":"",
+            "video_task":None
         },
         "image":{
             "show_image":False,
@@ -206,15 +207,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     def on_stop_showing_image(payload):
         print(f"-----------------INSIDE event handler of 'image.stop_showing_image'")
+        events.emit('image.show_avatar')
         
-        given_avatar = initial_state["user"]["given_avatar"]
-        
-        if given_avatar == True:
-            IMAGE_PATH = BASE_DIR / "data" / "images" / "avatar.png"
-        else :
-            IMAGE_PATH = BASE_DIR / "data" / "images" / "default_avatar.png"
-            
-        asyncio.create_task(show_image(task,IMAGE_PATH))
 
 
     events.on("image.stop_showing_image",on_stop_showing_image)
@@ -229,6 +223,39 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         
     events.on("video.pause_video",on_pause_video)
         
+    
+    def stop_video():
+        events.emit('video.stop_video',{})
+        
+    def on_stop_video(payload):
+        initial_state['video']['video_playing']=False
+        initial_state['video']['video_paused']=False
+        video_task = initial_state['video']['video_task']
+        if video_task:
+            video_task.cancel()
+        initial_state['video']['video_task']=None
+        
+        print("-------VIDEO STOPPED-------")
+        events.emit('image.show_avatar')
+        
+    events.on("video.stop_video",on_stop_video)
+        
+        
+    def show_avatar():
+        events.emit('image.show_avatar')
+        
+    def on_show_avatar(payload):
+        given_avatar = initial_state["user"]["given_avatar"]
+        
+        if given_avatar == True:
+            IMAGE_PATH = BASE_DIR / "data" / "images" / "avatar.png"
+        else :
+            IMAGE_PATH = BASE_DIR / "data" / "images" / "default_avatar.png"
+            
+        asyncio.create_task(show_image(task,IMAGE_PATH))
+    
+    events.on("image.show_avatar",on_show_avatar)
+    
     
     custom_observer = CustomObserver()
     
@@ -376,7 +403,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         #await gated_buffer_processor.close_gate()
         
         # asyncio.create_task(show_image(task, IMAGE_PATH))
-        asyncio.create_task(show_video(task, VIDEO_PATH))
+        video_task=asyncio.create_task(show_video(task, VIDEO_PATH))
+        initial_state["video"]['video_task']=video_task
         
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
@@ -397,6 +425,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     # loop.call_later(10, lambda: stop_showing_image())
 
     loop.call_later(10, lambda: pause_video())
+    
+    loop.call_later(20, lambda: stop_video())
     
     
     await runner.run(task)
