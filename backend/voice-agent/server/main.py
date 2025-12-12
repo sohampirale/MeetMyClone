@@ -82,6 +82,7 @@ from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.frames.frames import StartInterruptionFrame
 
+from pyee import AsyncIOEventEmitter
 
 
 logger.info("✅ All components loaded successfully!")
@@ -125,6 +126,18 @@ async def show_image(task, image_path:str):
 
     frame = OutputImageRawFrame(image=data,size=size,format="RGB")
     await task.queue_frames([frame])
+
+async def stop_showing_image(task, image_path:str):
+    img = Image.open(image_path).convert("RGB")
+    arr = np.array(img)
+
+    height, width, channels = arr.shape
+    size = (width, height)
+    data = arr.tobytes()
+
+    frame = OutputImageRawFrame(image=data,size=size,format="RGB")
+    await task.queue_frames([frame])
+
 
 
 
@@ -171,6 +184,8 @@ class CustomObserver(BaseObserver):
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
     
+    events = AsyncIOEventEmitter()
+
     initial_state={
         "video":{
             "play_video":False,
@@ -179,8 +194,27 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         "image":{
             "show_image":False,
             "filepath":""
+        },
+        "user":{
+            "given_avatar":True
         }
     }
+    
+    async def stop_showing_image():
+        await events.emit("image.stop_showing_image")
+    
+    @events.on("image.stop_showing_image")
+    async def on_video_finished(payload):
+        print(f"-----------------INSIDE event handler of 'image.stop_showing_image'")
+        
+        given_avatar = initial_state["user"]["given_avatar"]
+        
+        if given_avatar == True:
+            IMAGE_PATH = BASE_DIR / "data" / "images" / "avatar.png"
+        else :
+            IMAGE_PATH = BASE_DIR / "data" / "images" / "default_avatar.png"
+            
+        show_image(task,IMAGE_PATH)
     
     custom_observer = CustomObserver()
     
@@ -332,6 +366,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         await task.cancel()
 
     runner = PipelineRunner(handle_sigint=runner_args.handle_sigint)
+
+
+    #fake stop_showing_image call
+    loop = asyncio.get_event_loop()
+    
+    # Schedule to run once after 5 seconds
+    loop.call_later(10, lambda: asyncio.create_task(stop_showing_image()))
 
     await runner.run(task)
 

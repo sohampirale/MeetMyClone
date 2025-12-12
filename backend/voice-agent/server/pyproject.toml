@@ -6,7 +6,8 @@ requires-python = ">=3.10"
 dependencies = [
     "pipecat-ai[webrtc,daily,silero,deepgram,openai,cartesia,local-smart-turn-v3,runner,google]",
     "pipecat-ai-cli",
-    "np"
+    "np",
+    "pyee"
 ]
 
 [dependency-groups]

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1804,6 +1804,7 @@ dependencies = [
     { name = "np" },
     { name = "pipecat-ai", extra = ["cartesia", "daily", "deepgram", "google", "local-smart-turn-v3", "openai", "runner", "silero", "webrtc"] },
     { name = "pipecat-ai-cli" },
+    { name = "pyee" },
 ]
 
 [package.dev-dependencies]
@@ -1817,6 +1818,7 @@ requires-dist = [
     { name = "np" },
     { name = "pipecat-ai", extras = ["webrtc", "daily", "silero", "deepgram", "openai", "cartesia", "local-smart-turn-v3", "runner", "google"] },
     { name = "pipecat-ai-cli" },
+    { name = "pyee" },
 ]
 
 [package.metadata.requires-dev]
