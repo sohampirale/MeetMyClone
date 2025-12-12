@@ -180,12 +180,50 @@ class GatedBufferProcessor(FrameProcessor):
         self._gate_open = False
 
 
-class CustomObserver(BaseObserver):
-    async def on_push_frame(self, data: FramePushed):
-       # print('inside on_push_frame of Observer')
-       #print(f'data : ',data)
-       pass
+class CustomProcessor(FrameProcessor):
+    def __init__(self):
+        super().__init__()
+        self.transcriptionFrameFound=False
+        self.llmContextFrameFound=False
+        self.llmMessageFrameFound=False    
 
+    async def process_frame(self, frame: FramePushed, direction: FrameDirection):
+        await self.push_frame(frame, direction)
+        if isinstance(frame, TranscriptionFrame) and not self.transcriptionFrameFound:
+            self.transcriptionFrameFound=True
+            print(f'TranscriptionFrame : {frame}')
+        elif isinstance(frame, LLMContextFrame) and not self.llmContextFrameFound:
+            self.llmContextFrameFound=True            
+            print(f'LLMContextFrame : {frame}')
+        elif isinstance(frame, LLMMessagesFrame) and not self.llmMessageFrameFound:
+            self.llmMessageFrameFound=True
+            print(f'LLMMessage frame : {frame}')
+                
+
+
+class CustomObserver(BaseObserver):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.transcriptionFrameFound=False
+        self.llmContextFrameFound=False
+        self.llmMessageFrameFound=False
+        
+
+    async def on_push_frame(self, frame: FramePushed, direction: FrameDirection):
+        # await self.push_frame(frame, direction)
+        if isinstance(frame, TranscriptionFrame) and not self.transcriptionFrameFound:
+            self.transcriptionFrameFound=True
+            print(f'TranscriptionFrame : {frame}')
+        elif isinstance(frame, LLMContextFrame) and not self.llmContextFrameFound:
+            self.llmContextFrameFound=True            
+            print(f'LLMContextFrame : {frame}')
+        elif isinstance(frame, LLMMessagesFrame) and not self.llmMessageFrameFound:
+            self.llmMessageFrameFound=True
+            print(f'LLMMessage frame : {frame}')
+            
+
+
+            
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
     
@@ -296,7 +334,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     events.on("video.start_video_at_timestamp",on_start_video_at_timestamp)
         
     custom_observer = CustomObserver()
-    
+    custom_processor= CustomProcessor()
     async def show_video(task, video_path,start_time=0,audio_out:bool=True):
         
         cap = cv2.VideoCapture(str(video_path))
@@ -439,8 +477,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             rtvi,  # RTVI processor
             stt,
             transcript_processor.user(),
-            gated_buffer_processor,
             context_aggregator.user(),  # User responses
+            custom_processor,
+            gated_buffer_processor,
             # llm,  # LLM
             tts,  # TTS
             transport.output(),  # Transport bot output
@@ -455,7 +494,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
-        observers=[RTVIObserver(rtvi),custom_observer],
+        observers=[RTVIObserver(rtvi)],
     )
 
     @transport.event_handler("on_client_connected")
