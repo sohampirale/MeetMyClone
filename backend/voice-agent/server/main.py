@@ -82,7 +82,7 @@ from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.frames.frames import StartInterruptionFrame
 
-from pyee import AsyncIOEventEmitter
+from pyee import EventEmitter
 
 
 logger.info("✅ All components loaded successfully!")
@@ -154,10 +154,10 @@ class GatedBufferProcessor(FrameProcessor):
         await super().process_frame(frame, direction)
 
         if self._gate_open:
-            print('Allowing frames')
+            #print('Allowing frames')
             await self.push_frame(frame, direction)
         else:
-            print('Buffering frames')
+            #print('Buffering frames')
             # Gate is closed - buffer the frame
             self._buffer.append((frame, direction))
 
@@ -184,7 +184,7 @@ class CustomObserver(BaseObserver):
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
     
-    events = AsyncIOEventEmitter()
+    events = EventEmitter()
 
     initial_state={
         "video":{
@@ -200,11 +200,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         }
     }
     
-    async def stop_showing_image():
-        await events.emit("image.stop_showing_image")
-    
-    @events.on("image.stop_showing_image")
-    async def on_video_finished(payload):
+    def stop_showing_image():
+        events.emit("image.stop_showing_image",{})
+
+    def on_stop_showing_image(payload):
         print(f"-----------------INSIDE event handler of 'image.stop_showing_image'")
         
         given_avatar = initial_state["user"]["given_avatar"]
@@ -214,7 +213,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         else :
             IMAGE_PATH = BASE_DIR / "data" / "images" / "default_avatar.png"
             
-        show_image(task,IMAGE_PATH)
+        asyncio.create_task(show_image(task,IMAGE_PATH))
+
+
+    events.on("image.stop_showing_image",on_stop_showing_image)
+
     
     custom_observer = CustomObserver()
     
@@ -372,7 +375,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     loop = asyncio.get_event_loop()
     
     # Schedule to run once after 5 seconds
-    loop.call_later(10, lambda: asyncio.create_task(stop_showing_image()))
+    loop.call_later(10, lambda: stop_showing_image())
 
     await runner.run(task)
 
