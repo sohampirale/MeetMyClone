@@ -188,7 +188,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     initial_state={
         "video":{
-            "play_video":False,
+            "video_showing":False,
+            "video_paused":False,
             "filepath":""
         },
         "image":{
@@ -219,11 +220,23 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     events.on("image.stop_showing_image",on_stop_showing_image)
 
     
+    def pause_video(payload):
+        events.emit("video.pause_video",{})
+    
+    def on_pause_video():
+        initial_state['video']['video_paused']=True
+        print('---------------VIDEO PAUSED-----------')
+        
+    events.on("video.pause_video",on_pause_video)
+        
+    
     custom_observer = CustomObserver()
     
     async def show_video(task, video_path,audio_out:bool=True):
         cap = cv2.VideoCapture(str(video_path))
-
+        video_showing=initial_state['video']['video_showing']
+        video_paused = initial_state['video']['video_paused']
+        
         if not cap.isOpened():
             await gated_buffer_processor.open_gate()
             
@@ -251,7 +264,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             AUDIO_CHUNK_SIZE = 16000 * 2 // 20  
             # ~20ms of audio = 1600 samples * 2 bytes
 
-        while True:
+        while video_showing==True:
+            while video_paused==True:
+                video_paused=initial_state['video']['video_paused']
+                await asyncio.sleep(1)
+            
             ret, frame = cap.read()
             if not ret:
                 #loop video after ending
@@ -284,6 +301,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                     audio_frame = OutputAudioRawFrame(audio=audio_bytes, sample_rate=16000,num_channels=1)
                     await task.queue_frames([audio_frame])
 
+            video_showing=initial_state['video']['video_showing']
             await asyncio.sleep(delay)
 
     
@@ -356,8 +374,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
         
         #await gated_buffer_processor.close_gate()
-        asyncio.create_task(show_image(task, IMAGE_PATH))
-        #asyncio.create_task(show_video(task, VIDEO_PATH))
+        
+        # asyncio.create_task(show_image(task, IMAGE_PATH))
+        asyncio.create_task(show_video(task, VIDEO_PATH))
         
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
@@ -375,8 +394,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     loop = asyncio.get_event_loop()
     
     # Schedule to run once after 5 seconds
-    loop.call_later(10, lambda: stop_showing_image())
+    # loop.call_later(10, lambda: stop_showing_image())
 
+    loop.call_later(10, lambda: pause_video())
+    
+    
     await runner.run(task)
 
 
