@@ -207,7 +207,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     def on_stop_showing_image(payload):
         print(f"-----------------INSIDE event handler of 'image.stop_showing_image'")
-        events.emit('image.show_avatar')
+        events.emit('image.show_avatar',{})
         
 
 
@@ -236,13 +236,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         initial_state['video']['video_task']=None
         
         print("-------VIDEO STOPPED-------")
-        events.emit('image.show_avatar')
+        events.emit('image.show_avatar',{})
         
     events.on("video.stop_video",on_stop_video)
         
         
     def show_avatar():
-        events.emit('image.show_avatar')
+        events.emit('image.show_avatar',{})
         
     def on_show_avatar(payload):
         given_avatar = initial_state["user"]["given_avatar"]
@@ -424,7 +424,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     # Schedule to run once after 5 seconds
     # loop.call_later(10, lambda: stop_showing_image())
 
-    loop.call_later(10, lambda: pause_video())
+    loop.call_later(5, lambda: pause_video())
     
     loop.call_later(20, lambda: stop_video())
     
