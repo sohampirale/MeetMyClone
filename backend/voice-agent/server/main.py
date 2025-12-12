@@ -164,8 +164,9 @@ class GatedBufferProcessor(FrameProcessor):
 
 class CustomObserver(BaseObserver):
     async def on_push_frame(self, data: FramePushed):
-        print('inside on_push_frame of Observer')
-        print(f'data : ',data)
+       # print('inside on_push_frame of Observer')
+       #print(f'data : ',data)
+       pass
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
