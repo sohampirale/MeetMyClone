@@ -258,13 +258,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     
     
     def start_video_at_timestamp(start_time=0):
-        events.emit('video.restart_at_timestamp',{
+        events.emit('video.start_video_at_timestamp',{
             "start_time":start_time
         })
         
     def on_start_video_at_timestamp(payload):
         if "start_time" in payload:
-            start_time = payload[payload]
+            start_time = payload["start_time"]
         else :
             start_time=0
         
@@ -466,7 +466,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     # Schedule to run once after 5 seconds
     # loop.call_later(10, lambda: stop_showing_image())
 
-    loop.call_later(5, lambda: pause_video())
+    loop.call_later(8, lambda: pause_video())
     
     loop.call_later(15, lambda: stop_video())
     
