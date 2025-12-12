@@ -64,13 +64,13 @@ from pipecat.frames.frames import OutputImageRawFrame
 
 #from pipecat.frames import VideoFrame
 #from pipecat.frames.image import ImageFrame
-from pipecat.frames.frames import OutputImageRawFrame
+from pipecat.frames.frames import OutputImageRawFrame,OutputAudioRawFrame
 from PIL import Image
 import numpy as np
 import asyncio
 
 import cv2
-
+import subprocess
 
 from pathlib import Path
 
@@ -110,7 +110,7 @@ async def send_avatar_image(pipeline, image_path: str):
     # 4) Push into the pipeline DOWNSTREAM so it reaches transport.output()
     await pipeline.push_frame(frame)
 
-async def show_image(task, image_path):
+async def show_image(task, image_path:str):
     img = Image.open(image_path).convert("RGB")
     arr = np.array(img)
 
@@ -129,7 +129,7 @@ async def show_image(task, image_path):
         #await asyncio.sleep(1)       # send every 1s to keep stream alive
         #break
 
-async def show_video(task, video_path):
+async def show_video(task, video_path,audio_out:bool=True):
     cap = cv2.VideoCapture(str(video_path))
 
     if not cap.isOpened():
@@ -138,6 +138,24 @@ async def show_video(task, video_path):
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     delay = 1.0 / fps if fps > 0 else 1/30
+
+    if audio_out:
+        ffmpeg = subprocess.Popen(
+            [
+                "ffmpeg",
+                "-i", str(video_path),
+                "-f", "s16le",
+                "-acodec", "pcm_s16le",
+                "-ac", "1",
+                "-ar", "16000",
+                "-"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+
+        AUDIO_CHUNK_SIZE = 16000 * 2 // 20  
+        # ~20ms of audio = 1600 samples * 2 bytes
 
     while True:
         ret, frame = cap.read()
@@ -152,13 +170,22 @@ async def show_video(task, video_path):
         size = (w, h)
         buffer = frame_rgb.tobytes()
 
-        output_frame = OutputImageRawFrame(
+        video_frame = OutputImageRawFrame(
             image=buffer,
             size=size,
             format="RGB"
         )
+        
+        await task.queue_frames([video_frame])
+        
+        
+        # ----- AUDIO FRAME (optional) -----
+        if audio_out:
+            audio_bytes = ffmpeg.stdout.read(AUDIO_CHUNK_SIZE)
+            if audio_bytes:
+                audio_frame = OutputAudioRawFrame(audio_bytes, 16000)
+                await task.queue_frames([audio_frame])
 
-        await task.queue_frames([output_frame])
         await asyncio.sleep(delay)
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
