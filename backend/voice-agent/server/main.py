@@ -98,6 +98,10 @@ from io import BytesIO
 
 from pipecat.frames.frames import TTSSpeakFrame
 
+from pipecat.processors.aggregators.openai_llm_context import (
+    OpenAILLMContext,
+    OpenAILLMContextFrame,
+)
 
 logger.info("✅ All components loaded successfully!")
 
@@ -204,14 +208,15 @@ class CustomProcessor(FrameProcessor):
         if isinstance(frame, TranscriptionFrame) and  self.transcriptionFrameFound==False:
             self.transcriptionFrameFound=True
             print(f'TranscriptionFrame : {frame}')
-        elif isinstance(frame, LLMContextFrame) and  self.llmContextFrameFound==False:
+        elif isinstance(frame, LLMContextFrame):
             self.llmContextFrameFound=True            
-            print(f'LLMContextFrame : {frame}')
+            print(f'LLMContextFrame : {vars(frame)}')
+            print(f'context : {vars(frame.context)}')
         elif isinstance(frame, LLMMessagesFrame) and  self.llmMessageFrameFound==False:
             self.llmMessageFrameFound=True
             print(f'LLMMessage frame : {frame}')
-#        else:
-#            print(f'frame : {frame}')
+        elif isinstance(frame,OpenAILLMContextFrame):
+            print(f'OpenAILLMContextFrame frame : {vars(frame)}')
                 
 
 
@@ -228,12 +233,14 @@ class CustomObserver(BaseObserver):
         if isinstance(frame, TranscriptionFrame) and not self.transcriptionFrameFound:
             self.transcriptionFrameFound=True
             print(f'TranscriptionFrame : {frame}')
-        elif isinstance(frame, LLMContextFrame) and not self.llmContextFrameFound:
+        elif isinstance(frame, LLMContextFrame):
             self.llmContextFrameFound=True            
             print(f'LLMContextFrame : {frame}')
         elif isinstance(frame, LLMMessagesFrame) and not self.llmMessageFrameFound:
             self.llmMessageFrameFound=True
             print(f'LLMMessage frame : {frame}')
+        elif isinstance(frame,OpenAILLMContextFrame):
+            print(f'OpenAILLMContextFrame : {OpenAILLMContextFrame}')
             
 
 
@@ -547,7 +554,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     
     # loop.call_later(25, lambda: start_video_at_timestamp(5))
      
-    loop.call_later(15, lambda: asyncio.create_task(show_webpage('https://google.com')))
+    loop.call_later(15, lambda: asyncio.create_task(show_webpage(task,'https://google.com')))
     loop.call_later(15, lambda: asyncio.create_task(tts.push_frame(TTSSpeakFrame('This message is pushed by the STT frame'))))
      
     
