@@ -130,64 +130,6 @@ async def show_image(task, image_path:str):
         #await asyncio.sleep(1)       # send every 1s to keep stream alive
         #break
 
-async def show_video(task, video_path,audio_out:bool=True):
-    cap = cv2.VideoCapture(str(video_path))
-
-    if not cap.isOpened():
-        print("Error: Cannot open video file")
-        return
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    delay = 1.0 / fps if fps > 0 else 1/30
-
-    if audio_out:
-        ffmpeg = subprocess.Popen(
-            [
-                "ffmpeg",
-                "-i", str(video_path),
-                "-f", "s16le",
-                "-acodec", "pcm_s16le",
-                "-ac", "1",
-                "-ar", "16000",
-                "-"
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-
-        AUDIO_CHUNK_SIZE = 16000 * 2 // 20  
-        # ~20ms of audio = 1600 samples * 2 bytes
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # loop video from start
-            continue
-
-        # Convert BGR → RGB since cv2 uses BGR
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        h, w, c = frame_rgb.shape
-        size = (w, h)
-        buffer = frame_rgb.tobytes()
-
-        video_frame = OutputImageRawFrame(
-            image=buffer,
-            size=size,
-            format="RGB"
-        )
-        
-        await task.queue_frames([video_frame])
-        
-        
-        # ----- AUDIO FRAME (optional) -----
-        if audio_out:
-            audio_bytes = ffmpeg.stdout.read(AUDIO_CHUNK_SIZE)
-            if audio_bytes:
-                audio_frame = OutputAudioRawFrame(audio=audio_bytes, sample_rate=16000,num_channels=1)
-                await task.queue_frames([audio_frame])
-
-        await asyncio.sleep(delay)
 
 #custom processors
 
@@ -202,13 +144,16 @@ class GatedBufferProcessor(FrameProcessor):
         await super().process_frame(frame, direction)
 
         if self._gate_open:
+            print('Allowing frames')
             await self.push_frame(frame, direction)
         else:
+            print('Buffering frames')
             # Gate is closed - buffer the frame
             self._buffer.append((frame, direction))
 
     async def open_gate(self):
         """Open the gate and flush all buffered frames."""
+        print("Opening gate and Flushing all buffered frames")
         self._gate_open = True
         for frame, direction in self._buffer:
             await self.push_frame(frame, direction)
@@ -216,10 +161,77 @@ class GatedBufferProcessor(FrameProcessor):
 
     async def close_gate(self):
         """Close the gate to start buffering again."""
+        print('Closing the gate')
         self._gate_open = False
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
+    
+    async def show_video(task, video_path,audio_out:bool=True):
+        cap = cv2.VideoCapture(str(video_path))
+
+        if not cap.isOpened():
+            gated_buffer_processor.open_gate()
+            
+            print("Error: Cannot open video file")
+            return
+
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        delay = 1.0 / fps if fps > 0 else 1/30
+
+        if audio_out:
+            ffmpeg = subprocess.Popen(
+                [
+                    "ffmpeg",
+                    "-i", str(video_path),
+                    "-f", "s16le",
+                    "-acodec", "pcm_s16le",
+                    "-ac", "1",
+                    "-ar", "16000",
+                    "-"
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+
+            AUDIO_CHUNK_SIZE = 16000 * 2 // 20  
+            # ~20ms of audio = 1600 samples * 2 bytes
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                #loop video after ending
+                # cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # loop video from start
+                # continue
+                
+                # when video ends stop the playback
+                gated_buffer_processor.open_gate()
+                break
+            # Convert BGR → RGB since cv2 uses BGR
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            h, w, c = frame_rgb.shape
+            size = (w, h)
+            buffer = frame_rgb.tobytes()
+
+            video_frame = OutputImageRawFrame(
+                image=buffer,
+                size=size,
+                format="RGB"
+            )
+            
+            await task.queue_frames([video_frame])
+        
+        
+            # ----- AUDIO FRAME (optional) -----
+            if audio_out:
+                audio_bytes = ffmpeg.stdout.read(AUDIO_CHUNK_SIZE)
+                if audio_bytes:
+                    audio_frame = OutputAudioRawFrame(audio=audio_bytes, sample_rate=16000,num_channels=1)
+                    await task.queue_frames([audio_frame])
+
+            await asyncio.sleep(delay)
+
     
     voice_clone_id="71a7ad14-091c-4e8e-a314-022ece01c121"
     user_name='Soham Pirale'
@@ -289,6 +301,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
         VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
         
+        gated_buffer_processor.close_gate()
         # asyncio.create_task(show_image(task, IMAGE_PATH))
         asyncio.create_task(show_video(task, VIDEO_PATH))
         
