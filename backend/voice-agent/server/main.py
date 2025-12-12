@@ -196,7 +196,9 @@ class CustomProcessor(FrameProcessor):
         self.llmContextFrameFound=False
         self.llmMessageFrameFound=False    
 
-    async def process_frame(self, frame: FramePushed, direction: FrameDirection):
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+
         await self.push_frame(frame, direction)
         
         if isinstance(frame, TranscriptionFrame) and  self.transcriptionFrameFound==False:
@@ -208,6 +210,8 @@ class CustomProcessor(FrameProcessor):
         elif isinstance(frame, LLMMessagesFrame) and  self.llmMessageFrameFound==False:
             self.llmMessageFrameFound=True
             print(f'LLMMessage frame : {frame}')
+#        else:
+#            print(f'frame : {frame}')
                 
 
 
