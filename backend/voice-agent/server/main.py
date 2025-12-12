@@ -84,6 +84,9 @@ from pipecat.frames.frames import StartInterruptionFrame
 
 from pyee import EventEmitter
 
+from playwright.async_api import async_playwright
+from io import BytesIO
+
 
 logger.info("✅ All components loaded successfully!")
 
@@ -373,6 +376,30 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             await asyncio.sleep(delay)
 
     
+    async def show_webpage(task, url, refresh_rate=0.3):
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(url)
+
+            while True:
+                # take screenshot
+                img_bytes = await page.screenshot()
+                
+                # convert to RGB
+                img = Image.open(BytesIO(img_bytes)).convert("RGB")
+                arr = np.array(img)
+
+                frame = OutputImageRawFrame(
+                    image=arr.tobytes(),
+                    size=(arr.shape[1], arr.shape[0]),
+                    format="RGB"
+                )
+
+                await task.queue_frames([frame])
+                await asyncio.sleep(refresh_rate)
+
+    
     voice_clone_id="71a7ad14-091c-4e8e-a314-022ece01c121"
     user_name='Soham Pirale'
     stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
@@ -466,11 +493,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     # Schedule to run once after 5 seconds
     # loop.call_later(10, lambda: stop_showing_image())
 
-    loop.call_later(8, lambda: pause_video())
+    # loop.call_later(8, lambda: pause_video())
     
-    loop.call_later(15, lambda: stop_video())
+    loop.call_later(10, lambda: stop_video())
     
-    loop.call_later(25, lambda: start_video_at_timestamp(5))
+    # loop.call_later(25, lambda: start_video_at_timestamp(5))
+     
+    loop.call_later(15, lambda: asyncio.create_task(show_webpage('https://google.com')))
      
     
     await runner.run(task)

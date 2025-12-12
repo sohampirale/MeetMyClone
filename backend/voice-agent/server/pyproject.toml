@@ -7,7 +7,8 @@ dependencies = [
     "pipecat-ai[webrtc,daily,silero,deepgram,openai,cartesia,local-smart-turn-v3,runner,google]",
     "pipecat-ai-cli",
     "np",
-    "pyee"
+    "pyee",
+    "playwright"
 ]
 
 [dependency-groups]
