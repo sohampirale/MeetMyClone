@@ -171,7 +171,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         cap = cv2.VideoCapture(str(video_path))
 
         if not cap.isOpened():
-            gated_buffer_processor.open_gate()
+            await gated_buffer_processor.open_gate()
             
             print("Error: Cannot open video file")
             return
@@ -205,7 +205,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                 # continue
                 
                 # when video ends stop the playback
-                gated_buffer_processor.open_gate()
+                await gated_buffer_processor.open_gate()
                 break
             # Convert BGR → RGB since cv2 uses BGR
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -301,7 +301,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
         VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
         
-        gated_buffer_processor.close_gate()
+        await gated_buffer_processor.close_gate()
         # asyncio.create_task(show_image(task, IMAGE_PATH))
         asyncio.create_task(show_video(task, VIDEO_PATH))
         
