@@ -257,9 +257,46 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     events.on("image.show_avatar",on_show_avatar)
     
     
+    def start_video_at_timestamp(start_time=0):
+        events.emit('video.restart_at_timestamp',{
+            "start_time":start_time
+        })
+        
+    def on_start_video_at_timestamp(payload):
+        if "start_time" in payload:
+            start_time = payload[payload]
+        else :
+            start_time=0
+        
+        if "filepath" in payload:
+            filepath=payload['filepath']            
+        else:
+            filepath=initial_state['video']['filepath']
+        
+        if not filepath:
+            print('Filepath not found cannot start video at timestamp')    
+            return
+        
+        print(f'New start_time : {start_time}')
+        
+        video_task = initial_state['video']['video_task']
+        
+        if video_task:
+            video_task.cancel()
+            
+        video_task=asyncio.create_task(show_video(task,filepath,start_time))
+        
+        print(f'------VIDEO RESTARTED AT TIMESTAMP : {start_time}-------')
+        
+        
+        
+    events.on("video.start_video_at_timestamp",on_start_video_at_timestamp)
+        
+        
     custom_observer = CustomObserver()
     
-    async def show_video(task, video_path,audio_out:bool=True):
+    async def show_video(task, video_path,start_time=0,audio_out:bool=True):
+        
         cap = cv2.VideoCapture(str(video_path))
         video_showing=initial_state['video']['video_showing']
         video_paused = initial_state['video']['video_paused']
@@ -270,6 +307,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             print("Error: Cannot open video file")
             return
 
+        if start_time > 0:
+            cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
+            
         fps = cap.get(cv2.CAP_PROP_FPS)
         delay = 1.0 / fps if fps > 0 else 1/30
 
@@ -277,6 +317,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             ffmpeg = subprocess.Popen(
                 [
                     "ffmpeg",
+                    "-ss", str(start_time),
                     "-i", str(video_path),
                     "-f", "s16le",
                     "-acodec", "pcm_s16le",
@@ -403,8 +444,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         #await gated_buffer_processor.close_gate()
         
         # asyncio.create_task(show_image(task, IMAGE_PATH))
-        video_task=asyncio.create_task(show_video(task, VIDEO_PATH))
+        video_task=asyncio.create_task(show_video(task, VIDEO_PATH,5))
         initial_state["video"]['video_task']=video_task
+        initial_state["video"]['filepath']=VIDEO_PATH
         
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
@@ -426,8 +468,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     loop.call_later(5, lambda: pause_video())
     
-    loop.call_later(20, lambda: stop_video())
+    loop.call_later(15, lambda: stop_video())
     
+    loop.call_later(25, lambda: start_video_at_timestamp(5))
+     
     
     await runner.run(task)
 
