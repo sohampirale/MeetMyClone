@@ -317,9 +317,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
         VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
         
-        await gated_buffer_processor.close_gate()
-        # asyncio.create_task(show_image(task, IMAGE_PATH))
-        asyncio.create_task(show_video(task, VIDEO_PATH))
+        #await gated_buffer_processor.close_gate()
+        asyncio.create_task(show_image(task, IMAGE_PATH))
+        #asyncio.create_task(show_video(task, VIDEO_PATH))
         
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
