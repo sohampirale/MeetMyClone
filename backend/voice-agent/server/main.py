@@ -446,7 +446,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                 await task.queue_frames([frame])
                 await asyncio.sleep(refresh_rate)
 
-    
     voice_clone_id="71a7ad14-091c-4e8e-a314-022ece01c121"
     user_name='Soham Pirale'
     stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))

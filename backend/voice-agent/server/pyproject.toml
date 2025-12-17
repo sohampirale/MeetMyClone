@@ -1,5 +1,5 @@
 [project]
-name = "MeetWithMe"
+name = "swarm-agents"
 version = "0.1.0"
 description = "Voice AI Clone pipecat bot"
 requires-python = ">=3.10"
