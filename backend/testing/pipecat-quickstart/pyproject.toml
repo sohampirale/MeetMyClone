@@ -6,6 +6,9 @@ requires-python = ">=3.10"
 dependencies = [
     "pipecat-ai[cartesia,daily,deepgram,gemini,local-smart-turn-v3,openai,runner,silero,webrtc,google]",
     "pipecat-ai-cli",
+    "strands-agents",
+    "litellm",
+    "strands-agents-tools",
 ]
 
 [dependency-groups]
