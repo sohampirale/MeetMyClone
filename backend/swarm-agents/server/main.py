@@ -252,6 +252,8 @@ class CustomProcessor(FrameProcessor):
         elif isinstance(frame, LLMMessagesFrame) and  self.llmMessageFrameFound==False:
             self.llmMessageFrameFound=True
             print(f'LLMMessage frame : {frame}')
+
+
 #        else:
 #            print(f'frame : {frame}')
                 

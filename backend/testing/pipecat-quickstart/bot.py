@@ -20,7 +20,16 @@ Run the bot using::
 """
 
 import os
-
+BASE_DIR = Path(__file__).parent
+from pipecat.frames.frames import (
+    Frame,
+    TranscriptionFrame, 
+    LLMContextFrame, 
+    LLMTextFrame,      # Most common for LLM output
+    LLMFullResponseStartFrame,
+    LLMFullResponseEndFrame, 
+    LLMMessagesFrame
+)
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -57,7 +66,7 @@ from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 from pipecat.frames.frames import Frame
-#from pipecat.frames.frame_direction import FrameDirection  # Correct location
+from pipecat.frames.frame_direction import FrameDirection  # Correct location
 from pipecat.processors.frame_processor import FrameProcessor
 
 
@@ -65,66 +74,26 @@ logger.info("✅ All components loaded successfully!")
 
 load_dotenv(override=True)
 
-class FrameA(Frame):
-    #custom_data: Any  # Your custom payload
-    #metadata: Optional[dict] = None
-    
-    def __post_init__(self):
-        super().__post_init__() 
 
-class FrameB(Frame):
-    #custom_data: Any  # Your custom payload
-    #metadata: Optional[dict] = None
-
-    def __post_init__(self):
-        super().__post_init__()
-
-class Player(FrameProcessor):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)  # Required: Initialize parent
-        self.printed=False
-    
-    async def process_frame(self, frame: Frame, direction):
-        await super().process_frame(frame, direction)  # Required: Call parent processing
-        #print('inside player processor')
-        # Your custom logic here
-        if isinstance(frame, FrameA):
-            print('FrameA received')
-            self.push_frame(FrameB())
-            return
-        
-        await self.push_frame(frame, direction)  # Required: Forward EVERY fr
-
-class Host(FrameProcessor):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)  # Required: Initialize parent
-        self.pushedA=False
+class AWSStrandsProcessor(FrameProcessor):
+    def __init__(self):
+        super().__init__()
+        self.transcriptionFrameFound=False
+        self.llmContextFrameFound=False
+        self.llmMessageFrameFound=False    
 
     async def process_frame(self, frame: Frame, direction):
-        await super().process_frame(frame, direction)  # Required: Call parent processing
-        
-        #if self.pushedA==False:
-        await self.push_frame(FrameA())
-        #self.pushedA=True
-    
-        # Your custom logic here
-        if isinstance(frame, FrameB):
-            print('FrameB received')
-            #await self.push_frame(FrameB())
-            return
-        
+        await super().process_frame(frame, direction)
+
         await self.push_frame(frame, direction)
+            
+        if isinstance(frame, LLMMessagesFrame) and  self.transcriptionFrameFound==False:
+            self.transcriptionFrameFound=True
+            print(f'LLMMessagesFrame  : {frame}')
+    
+        
 
-class Temp(FrameProcessor):
-    def __init__(self,**kwargs):
-        super().__init__(**kwargs)
 
-
-    async def process_frame(self,frame:Frame,direction):
-        await super().process_frame(frame,direction)
-
-        print(f'Inside Temp temp frame : {frame}')
-        await self.push_frame(frame)
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
@@ -136,6 +105,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         api_key=os.getenv("CARTESIA_API_KEY"),
         voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",  # British Reading Lady
     )
+    
+    aws_strands=AWSStrandsProcessor()
 
     # llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
     llm = GoogleLLMService(
@@ -144,9 +115,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         system_instruction="You are a helpful AI assistant. Keep responses brief."
     )
 
-    host = Host()
-    player= Player()
-    temp = Temp()
 
     messages = [
         {
@@ -166,11 +134,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             rtvi,  # RTVI processor
             stt,
             context_aggregator.user(),  # User responses
-            #llm,  # LLM
-            ParallelPipeline(
-                [host,temp],
-                [player]
-            ),
+            aws_strands,       
             tts,  # TTS
             transport.output(),  # Transport bot output
             context_aggregator.assistant(),  # Assistant spoken responses
