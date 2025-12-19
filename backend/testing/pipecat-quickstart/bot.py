@@ -317,7 +317,8 @@ async def smart_background_agents(task:str):
     Input : task: describe what you want the background agents to do 
     """
     
-    print('------------------INSIDE smart_background_agents----------------')
+    print('------------------INSIDE smart_background_agents---------------- ')
+    print(f'task : {task}')
         
     asyncio.create_task(_run_background_agents(task))
 
