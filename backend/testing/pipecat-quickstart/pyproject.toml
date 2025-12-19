@@ -9,6 +9,10 @@ dependencies = [
     "strands-agents",
     "litellm",
     "strands-agents-tools",
+    "mcp",
+    "dotenv",
+    "nest_asyncio",
+    "playwright"
 ]
 
 [dependency-groups]
