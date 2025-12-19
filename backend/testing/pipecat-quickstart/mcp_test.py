@@ -51,7 +51,6 @@ async def init_browser_session():
     
     return "Session initialized"
 cnt = 0
-
 @tool
 async def set_page_instance():
     """Extract REAL page from session"""
@@ -72,19 +71,26 @@ async def set_page_instance():
         print(f"✅ Type: {type(page)}")
         
         try:     
-            browser_tool.browser({
+            # ✅ CORRECT: await the browser_tool.browser() call
+            screenshot_result = browser_tool.browser({
                 "action": {
-                "type": "screenshot",
-                "session_name": "google-session",
-                "path": "sohampirale.png"  # Optional - omit to get base64
+                    "type": "screenshot",
+                    "session_name": "google-session",
+                    "path": "./soham.png"  # Add path to avoid base64 issues
                 }
             })
+            print(f'✅ Screenshot taken successfully: {screenshot_result}')
+            
+            # Set global page
+            current_browser_page = page
+            return f"🎥 STREAMING READY! {page.url} | Screenshot: debug.png"
 
         except Exception as e:       
-            print(f'Error : {e}')
+            print(f'❌ Screenshot Error: {e}')
+            import traceback
+            traceback.print_exc()
+            return f"Page ready but screenshot failed: {e}"
             
-        return f"🎥 STREAMING READY! {page.url}"
-
     print("❌ No google-session yet")
     return "Run 'open google.com' first"
 
