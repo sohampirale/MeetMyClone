@@ -275,13 +275,25 @@ async def assign_tasks(jobs:AssignTasksInput):
         - No coordination, communication, or result-sharing occurs between agents.
         - This tool does not return results; downstream systems must collect outputs separately.
     """
-    print('---------INSIDE assign_tasks()--------------')
-    for agent_name, task in jobs:
-        if agent_name in all_availaible_agents and "agent" in all_availaible_agents[agent_name]:
-            agent=all_availaible_agents[agent_name]["agent"]
-            asyncio.create_task(run_agent_job(agent,task))
-                
-    return "Agents have started working on given jobs"
+    print(f'---------INSIDE assign_tasks()--------------')
+    print(f'jobs : {jobs}')
+    #TODO : add error handlign and log error
+    try:
+        jobs = jobs["jobs"]
+        for obj in jobs:
+            agent_name = obj["agent"]
+            task = obj["task"]
+            if agent_name in all_availaible_agents and "agent" in all_availaible_agents[agent_name]:
+                agent=all_availaible_agents[agent_name]["agent"]
+                asyncio.create_task(run_agent_job(agent,task))
+                print(f'Assigned task : {task} to agent {agent.name}')
+            else:
+                print(f'agent_name not found in all_availaible_agents : {agent_name}')
+    except Exception as e:
+        print(f'Errro in assing_task() : {e}')
+
+    print('Returning the statement')
+    return "All Agents have started working on given jobs"
 
 async def run_agent_blocking(agent, prompt: str):
     return await asyncio.to_thread(agent, prompt)
@@ -316,7 +328,7 @@ async def _run_background_agents(task: str):
                 }
             ),
         tools=[assign_tasks],
-        system_prompt="You are an expert agent orchestrator your main job is to understand requirement or task thats asked and having all availaible agents assign specific things to each agent to do in parallel non collaborative way that we will collect output from each agent at the end,You will be given all availaible agents with their description , use tool 'assign_job' to assign specific task to work on, your final output doesnt matter but how you use the tool 'assign_tasks' does, do not output anythign at the end"
+        system_prompt="You are an expert agent orchestrator your main job is to understand requirement or task thats asked and having all availaible agents assign specific things to each agent to do in parallel non collaborative way that we will collect output from each agent at the end,You will be given all availaible agents with their description , use tool 'assign_tasks' to assign taks to agents, your final output doesnt matter but how you use the tool 'assign_tasks' does, do not output anythign at the end, IMP : DO NOT use the 'assign_tasks' more than once"
     )
 #    orchestrator_agent(f'Task is {task} {agents_utilization_response} ,all availaible agent : {all_availaible_agents}')
 #    orchestrator_agent(f'Task is {task} ,all availaible agent : {all_availaible_agents}')
@@ -363,7 +375,7 @@ model = LiteLLMModel(
 agent = Agent(
     model=model,
     tools=[calculator,smart_background_agents],
-    system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them, they will update your system prompt with the collected information so response to user and end your instance no need to tell user many internal details,tell user that you have spawned advance agent working in background and meantime assist user by yourself with whatever knowledge you have! , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent,call the tool 'smart_background_agent' before responding to user and keep interacting onwards, Do not wait for information to come you have to continue interacting with user with whatever you know"
+    system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them,their findings will be available shortly ,tell user that you have agents working in background and meantime assist user by yourself with whatever knowledge you have! dont give too much technical internal details as well , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent,call the tool 'smart_background_agent' before responding to user and keep interacting onwards, Do not wait for information to come you have to continue interacting with user with whatever you know"
 )
 
 
