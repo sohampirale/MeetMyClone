@@ -138,7 +138,39 @@ from pyee import EventEmitter
 from playwright.async_api import async_playwright
 from io import BytesIO
 from pipecat.frames.frames import TTSSpeakFrame
+from strands import Agent,tool
+from strands.models.litellm import LiteLLMModel
+from strands_tools import calculator # Import the calculator tool
 
+model = LiteLLMModel(
+    client_args={
+        "api_key":os.getenv('OPENROUTER_API_KEY'),
+    },
+    model_id="openrouter/openai/gpt-4o-mini",
+    # model_id="openrouter/google/gemini-2.0-flash-lite-001",
+    # model_id="openrouter/google/gemini-2.0-flash-exp:free",
+    # model_id="openrouter/google/gemini-2.0-flash-001",
+    # model_id="openrouter/google/gemini-2.5-pro",
+    params={
+        'temperature':0.5,
+        "max_tokens":1000
+    },
+)
+
+
+
+@tool
+def smart_background_agents(topic:str):
+    """Important tool for voice agent to run background specialized powerful agents for research
+    
+    Use this tool mid conversation based on users interest and multiple specialized agents will run in background to collect information for you and provide you shortly
+
+    Input : topic: describe what you want the background agents to do 
+    """
+
+    print('------------------INSIDE smart_background_agents----------------')
+    print(f'topic : {topic}')
+    return "background specialized agents have started"
 
 logger.info("✅ All components loaded successfully!")
 
@@ -743,12 +775,19 @@ class BaseBot(ABC):
                     if system_messages
                     else "You are a voice assistant"
                 )
-                self.conversation_llm = GoogleLLMService(
-                    api_key=config.google_api_key,
-                    model=config.google_model,
-                    params=config.google_params,
-                    system_instruction=system_instruction,
+                # self.conversation_llm = GoogleLLMService(
+                #     api_key=config.google_api_key,
+                #     model=config.google_model,
+                #     params=config.google_params,
+                #     system_instruction=system_instruction,
+                # )
+                
+                self.conversation_llm= Agent(
+                    model=model,
+                    tools=[smart_background_agents],
+                    system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them, DO NOT tell user about this and meantime try to answer by yourself you will know when the answer comes until them you have to handle user without that info and without letting him know that you dont have the information yet, and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic"
                 )
+
                 self.llm = self.conversation_llm
 
                 # Statement classifier LLM for endpoint detection
