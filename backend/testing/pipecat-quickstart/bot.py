@@ -274,6 +274,9 @@ async def assign_tasks(jobs:List[Tuple[str, str]]):
                 
     return "Agents have started working on given jobs"
 
+async def run_agent_blocking(agent, prompt: str):
+    return await asyncio.to_thread(agent, prompt)
+
 async def _run_background_agents(task: str):
     agents_creator_agent = Agent(
             model=LiteLLMModel(
@@ -287,10 +290,10 @@ async def _run_background_agents(task: str):
                     }
                 ),
             tools=[create_new_agent],
-            system_prompt="You are expert at decision making and deciding which exact agents are necessary for a job,Your job is to understand the requirement or task given to us and depending on it we are going to spawn multiple agents to work on that task, you have to decide based on currently availaible agents and their speciality whether to create new agents whenever necessary and work with currently availaible once,use the tool create_new_agent and that will create that specialized agent in backgroud, all agents are going to run in paralle and not communictae with each main purpose for building them is to getr commulitive specialized responses for that task"
+            system_prompt="You are expert at decision making and deciding which exact agents are necessary for a job,Your job is to understand the requirement or task given to us and depending on it we are going to spawn multiple agents to work on that task, you have to decide based on currently availaible agents and their speciality whether to create new agents whenever necessary and work with currently availaible once,use the tool create_new_agent and that will create that specialized agent in backgroud, all agents are going to run in paralle and not communictae with each main purpose for building them is to getr commulitive specialized responses for that task, IMP : Requested agents will be created 100% even though they might not be present in all availaible agents, DO NOT request for same agent twice!"
     )
     
-    agents_utilization_response=agents_creator_agent(f'Currently availaible agents are : {all_availaible_agents} and requirement or task description is : {task}, your end response should clearly explain which agents to use (that are already existsing) and all the agents you created using create_new_agent tool and what to ask these agent to do')
+    #agents_utilization_response=agents_creator_agent(f'Currently availaible agents are : {all_availaible_agents} and requirement or task description is : {task}, your end response should clearly explain which agents to use (that are already existsing) and all the agents you created using create_new_agent tool and what to ask these agent to do')
     
     orchestrator_agent = Agent(
         model=LiteLLMModel(
@@ -306,7 +309,15 @@ async def _run_background_agents(task: str):
         tools=[assign_tasks],
         system_prompt="You are an expert agent orchestrator your main job is to understand requirement or task thats asked and having all availaible agents assign specific things to each agent to do in parallel non collaborative way that we will collect output from each agent at the end,You will be given all availaible agents with their description , use tool 'assign_job' to assign specific task to work on, your final output doesnt matter but how you use the tool 'assign_tasks' does, do not output anythign at the end"
     )
-    orchestrator_agent(f'Task is {task} {agents_utilization_response} ,all availaible agent : {all_availaible_agents}')
+#    orchestrator_agent(f'Task is {task} {agents_utilization_response} ,all availaible agent : {all_availaible_agents}')
+#    orchestrator_agent(f'Task is {task} ,all availaible agent : {all_availaible_agents}')
+
+    await run_agent_blocking(
+        orchestrator_agent,
+        f"Task is {task}. Agents: {all_availaible_agents}"
+    )
+
+
 
 @tool
 async def smart_background_agents(task:str):
@@ -343,7 +354,7 @@ model = LiteLLMModel(
 agent = Agent(
     model=model,
     tools=[calculator,smart_background_agents],
-    system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them, they will update your system prompt with the collected information so response to user and end your instance no need to tell user many internal details,tell user that you have spawned advance agent working in background and meantime assist user by yourself with whatever knowledge you have! , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent"
+    system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them, they will update your system prompt with the collected information so response to user and end your instance no need to tell user many internal details,tell user that you have spawned advance agent working in background and meantime assist user by yourself with whatever knowledge you have! , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent,call the tool 'smart_background_agent' before responding to user and keep interacting onwards, Do not wait for information to come you have to continue interacting with user with whatever you know"
 )
 
 
