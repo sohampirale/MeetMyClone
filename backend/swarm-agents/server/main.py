@@ -30,8 +30,8 @@ from pipecat.frames.frames import (
     UserStoppedSpeakingFrame,
     TranscriptionFrame,
     LLMMessagesFrame,
-    StartInterruptionFrame,
-    StopInterruptionFrame,
+#    StartInterruptionFrame,
+#    StopInterruptionFrame,
     FunctionCallInProgressFrame,
     FunctionCallResultFrame,
 )
@@ -107,8 +107,8 @@ from pipecat.frames.frames import (
     UserStoppedSpeakingFrame,
     TranscriptionFrame,
     LLMMessagesFrame,
-    StartInterruptionFrame,
-    StopInterruptionFrame,
+#    StartInterruptionFrame,
+#    StopInterruptionFrame,
     FunctionCallInProgressFrame,
     FunctionCallResultFrame,
 )
@@ -133,7 +133,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from pipecat.observers.base_observer import BaseObserver, FramePushed
-from pipecat.frames.frames import StartInterruptionFrame
+#from pipecat.frames.frames import StartInterruptionFrame
 from pyee import EventEmitter
 from playwright.async_api import async_playwright
 from io import BytesIO
