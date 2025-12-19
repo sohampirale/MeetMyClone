@@ -76,7 +76,7 @@ async def set_page_instance():
                 "action": {
                     "type": "screenshot",
                     "session_name": "google-session",
-                    "path": "./soham.png"  # Add path to avoid base64 issues
+                    #"path": "./soham.png"  # Add path to avoid base64 issues
                 }
             })
             print(f'✅ Screenshot taken successfully: {screenshot_result}')
