@@ -69,9 +69,17 @@ from pipecat.frames.frames import (
     BotInterruptionFrame,
     LLMContextFrame,
 )
+import base64
+from io import BytesIO
+
+import numpy as np
+from PIL import Image
+from pipecat.frames.frames import OutputImageRawFrame  # adjust path if needed
+
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContextFrame
 from pipecat.processors.frameworks.strands_agents import StrandsAgentsProcessor
 
+task=None
 logger.info("✅ All components loaded successfully!")
 
 load_dotenv(override=True)
@@ -81,6 +89,7 @@ from strands.models.litellm import LiteLLMModel
 from strands_tools import calculator # Import the calculator tool
 from typing import List,Tuple
 from pydantic import BaseModel, Field
+from strands_tools.browser import LocalChromiumBrowser
 
 class TaskJob(BaseModel):
     agent: str = Field(..., description="Name of the agent")
@@ -252,6 +261,105 @@ async def run_agent_job(agent: any, task: str):
         "response":str(output)
     })
 
+browser_tool = LocalChromiumBrowser()
+
+@tool
+async def set_page_instance():
+    """Extract REAL page from session"""
+    global browser_tool, cnt, current_browser_page
+
+    session_name = "google-session"
+
+    print("\n🔍 CHECKING SESSIONS...")
+    print(f"Sessions: {list(browser_tool._sessions.keys())}")
+    print(f"browser_tool._sessions: {browser_tool._sessions}")
+
+    if session_name in browser_tool._sessions:
+        session = browser_tool._sessions[session_name]
+        page = session.page
+
+        print(f"✅ SUCCESS! PAGE FOUND: {page}")
+        print(f"✅ URL: {page.url}")
+        print(f"✅ Type: {type(page)}")
+        
+        try:     
+            # ✅ CORRECT: await the browser_tool.browser() call
+            screenshot_result = browser_tool.browser({
+                "action": {
+                    "type": "screenshot",
+                    "session_name": "google-session",
+                    #"path": "./soham.png"  # Add path to avoid base64 issues
+                }
+            })
+            print(f'✅ Screenshot taken successfully: {screenshot_result}')
+            
+            # Set global page
+            current_browser_page = page
+            return f"🎥 STREAMING READY! {page.url} | Screenshot: debug.png"
+
+        except Exception as e:       
+            print(f'❌ Screenshot Error: {e}')
+            import traceback
+            traceback.print_exc()
+            return f"Page ready but screenshot failed: {e}"
+            
+    print("❌ No google-session yet")
+    return "Run 'open google.com' first"
+
+should_present_webpage=True
+
+@tool
+def stop_webpage_present():
+    """Tool to stop presenting opened webpage to the user"""
+    global should_present_webpage
+    should_present_webpage=False
+    return "Stopped presenting webpage to the user"
+
+async def _async_present_webpage(session_name:str):
+    global should_present_webpage
+    while should_present_webpage==True:
+        screenshot_result = browser_tool.browser({
+            "action": {
+                "type": "screenshot",
+                "session_name": session_name
+            }
+        })
+        if screenshot_result.get("status") != "success":
+            await asyncio.sleep(0.5)
+            continue
+
+            # 2) Extract base64 image from content
+        b64_image = screenshot_result["content"][1]["data"]
+
+        # 3) Decode base64 → bytes → PIL → numpy
+        img_bytes = base64.b64decode(b64_image)
+        img = Image.open(BytesIO(img_bytes)).convert("RGB")
+        arr = np.array(img)
+        h, w, c = arr.shape
+        size = (w, h)
+        data = arr.tobytes()
+
+        # 4) Create Pipecat frame and queue as “video” frame
+        frame = OutputImageRawFrame(
+            image=data,
+            size=size,
+            format="RGB",
+        )
+        await task.queue_frames([frame])
+
+        # 5) Small delay to control “FPS”
+        await asyncio.sleep(0.5)
+@tool
+async def present_webpage(session_name:str):
+    """Tool to present the webpage opened in browser to the user in meeting
+    Args:
+    session_name:str = name of the session started
+    """
+    print('-----Inside present webpage')
+    asyncio.create_task(_async_present_webpage(session_name))
+    
+    return "webpage started presenting successfully"
+
 @tool
 async def assign_tasks(jobs:AssignTasksInput):
     """
@@ -338,7 +446,20 @@ async def _run_background_agents(task: str):
         f"Task is {task}. Agents: {all_availaible_agents}"
     )
 
-
+@tool
+async def init_browser_session():
+    """Initialize AND verify session"""
+    global browser_tool
+    await browser_tool.init_session("main")
+    
+    # CHECK if session was created
+    print(f"Sessions after init: {browser_tool._sessions}")
+    if "main" in browser_tool._sessions:
+        print("✅ 'main' session created!")
+    else:
+        print("❌ Session NOT created!")
+    
+    return "Session initialized"
 
 @tool
 async def smart_background_agents(task:str):
@@ -372,10 +493,13 @@ model = LiteLLMModel(
     },
 )
 
+tools=[browser_tool.browser,init_browser_session,set_page_instance,smart_background_agents,present_webpage,stop_webpage_present]
+
 agent = Agent(
     model=model,
-    tools=[calculator,smart_background_agents],
-    system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them,their findings will be available shortly ,tell user that you have agents working in background and meantime assist user by yourself with whatever knowledge you have! dont give too much technical internal details as well , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent,call the tool 'smart_background_agent' before responding to user and keep interacting onwards, Do not wait for information to come you have to continue interacting with user with whatever you know"
+    tools=tools,
+    # system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them,their findings will be available shortly ,tell user that you have agents working in background and meantime assist user by yourself with whatever knowledge you have! dont give too much technical internal details as well , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent,call the tool 'smart_background_agent' before responding to user and keep interacting onwards, Do not wait for information to come you have to continue interacting with user with whatever you know, IMP : after successfull browser opening call the tool 'present_webpage'"
+    system_prompt="You are a voice ai agent in realtime meeting with user, you are expert in using browser with tools atatched to you, everytime you open a browser use tool 'present_webpage' and 'stop_webpage_present' after user says close webpage"
 )
 
 
@@ -440,6 +564,7 @@ class AWSStrandsProcessor(FrameProcessor):
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
+    global task
     logger.info(f"Starting bot")
     print('--------INSIDE run_bot()')
 

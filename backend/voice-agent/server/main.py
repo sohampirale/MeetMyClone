@@ -23,7 +23,11 @@ import os
 
 from dotenv import load_dotenv
 from loguru import logger
-
+from strands import Agent,tool
+from strands.models.litellm import LiteLLMModel
+from strands_tools import calculator # Import the calculator tool
+from typing import List,Tuple
+from pydantic import BaseModel, Field
 print("🚀 Starting Pipecat bot...")
 print("⏳ Loading models and imports (20 seconds, first run only)\n")
 
@@ -314,7 +318,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         asyncio.create_task(show_image(task,IMAGE_PATH))
     
     events.on("image.show_avatar",on_show_avatar)
-      
+    
     def start_video_at_timestamp(start_time=0):
         events.emit('video.start_video_at_timestamp',{
             "start_time":start_time
@@ -346,6 +350,31 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         
         print(f'------VIDEO RESTARTED AT TIMESTAMP : {start_time}-------')
          
+         
+    should_present_webpage=True
+
+    @tool
+    def stop_webpage_present():
+        """Tool to stop presenting opened webpage to the user"""
+        global should_present_webpage
+        should_present_webpage=False
+        return "Stopped presenting webpage to the user"
+
+    @tool
+    async def present_webpage(session_name:str):
+        """Tool to present the webpage opened in browser to the user in meeting
+        Args:
+        session_name:str = name of the session started
+        """
+        while should_present_webpage==True:
+            screenshot_result = browser_tool.browser({
+                "action": {
+                    "type": "screenshot",
+                    "session_name": session_name
+                }
+            })
+            b64_image=screenshot_result['content'][1]['data']
+
     events.on("video.start_video_at_timestamp",on_start_video_at_timestamp)
         
     custom_observer = CustomObserver()
