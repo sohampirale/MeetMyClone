@@ -79,6 +79,7 @@ async def set_page_instance():
                     #"path": "./soham.png"  # Add path to avoid base64 issues
                 }
             })
+            b64 = result["image_base64"]  # same as content[1]["data"]
             print(f'✅ Screenshot taken successfully: {screenshot_result}')
             
             # Set global page
