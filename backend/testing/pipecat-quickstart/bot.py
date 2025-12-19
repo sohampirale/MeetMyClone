@@ -318,34 +318,37 @@ def stop_webpage_present():
 async def _async_present_webpage(session_name:str):
     global should_present_webpage
     while should_present_webpage==True:
-        screenshot_result = browser_tool.browser({
-            "action": {
-                "type": "screenshot",
-                "session_name": session_name
-            }
-        })
-        if screenshot_result.get("status") != "success":
-            await asyncio.sleep(0.5)
-            continue
+        try:
+            screenshot_result = browser_tool.browser({
+                "action": {
+                    "type": "screenshot",
+                    "session_name": session_name
+                }
+            })
+            if screenshot_result.get("status") != "success":
+                await asyncio.sleep(0.5)
+                continue
 
-            # 2) Extract base64 image from content
-        b64_image = screenshot_result["content"][1]["data"]
+                # 2) Extract base64 image from content
+            b64_image = screenshot_result["content"][1]["data"]
 
-        # 3) Decode base64 → bytes → PIL → numpy
-        img_bytes = base64.b64decode(b64_image)
-        img = Image.open(BytesIO(img_bytes)).convert("RGB")
-        arr = np.array(img)
-        h, w, c = arr.shape
-        size = (w, h)
-        data = arr.tobytes()
+            # 3) Decode base64 → bytes → PIL → numpy
+            img_bytes = base64.b64decode(b64_image)
+            img = Image.open(BytesIO(img_bytes)).convert("RGB")
+            arr = np.array(img)
+            h, w, c = arr.shape
+            size = (w, h)
+            data = arr.tobytes()
 
-        # 4) Create Pipecat frame and queue as “video” frame
-        frame = OutputImageRawFrame(
-            image=data,
-            size=size,
-            format="RGB",
-        )
-        await task.queue_frames([frame])
+            # 4) Create Pipecat frame and queue as “video” frame
+            frame = OutputImageRawFrame(
+                image=data,
+                size=size,
+                format="RGB",
+            )
+            await task.queue_frames([frame])
+        except Exception as e:
+            print(f'Error in _async_present_webpage : {e}')
 
         # 5) Small delay to control “FPS”
         await asyncio.sleep(0.5)
