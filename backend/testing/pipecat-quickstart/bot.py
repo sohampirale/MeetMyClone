@@ -80,6 +80,15 @@ from strands import Agent,tool
 from strands.models.litellm import LiteLLMModel
 from strands_tools import calculator # Import the calculator tool
 from typing import List,Tuple
+from pydantic import BaseModel, Field
+
+class TaskJob(BaseModel):
+    agent: str = Field(..., description="Name of the agent")
+    task: str = Field(..., description="Specific task for this agent")
+
+class AssignTasksInput(BaseModel):
+    jobs: List[TaskJob] = Field(..., description="List of tasks to assign")
+
 
 messages = [
         {
@@ -244,7 +253,7 @@ async def run_agent_job(agent: any, task: str):
     })
 
 @tool
-async def assign_tasks(jobs:List[Tuple[str, str]]):
+async def assign_tasks(jobs:AssignTasksInput):
     """
     Assign independent tasks to multiple agents for parallel execution.
 
@@ -266,7 +275,7 @@ async def assign_tasks(jobs:List[Tuple[str, str]]):
         - No coordination, communication, or result-sharing occurs between agents.
         - This tool does not return results; downstream systems must collect outputs separately.
     """
-    
+    print('---------INSIDE assign_tasks()--------------')
     for agent_name, task in jobs:
         if agent_name in all_availaible_agents and "agent" in all_availaible_agents[agent_name]:
             agent=all_availaible_agents[agent_name]["agent"]
