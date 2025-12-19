@@ -70,36 +70,19 @@ async def set_page_instance():
         print(f"✅ SUCCESS! PAGE FOUND: {page}")
         print(f"✅ URL: {page.url}")
         print(f"✅ Type: {type(page)}")
-        #try:
-#         screenshot = await browser_tool.screenshot()
-#         screenshot = await browser_tool._async_screenshot(session_name)
-        loop = asyncio.get_event_loop()
-        browser_tool.browser({
-            "action": {
-            "type": "screenshot",
-            "session_name": "google-session",
-            "path": "sohampirale.png"  # Optional - omit to get base64
-            }
-        })
-       
-         #screenshot = await loop.run_in_executor(
-         #       None, 
-          #      #page.screenshot  # Pass as callable, NOT await!
-          #      lambda: asyncio.run(page.screenshot())  # Run async in thread
-#
- #        )
-         #screenshot=await page.screenshot()
-         #print('screenshot is taken')
-         #filename = f"{session_name}_working_{cnt}.png"
-         #with open(filename, "wb") as f:
-         #    f.write(screenshot)#
-#
- #        cnt += 1
-  #       print(f"💾 SAVED: {filename}")
-#
- #        current_browser_page = page
-  	    #except Exception as e:
-        print(f'Error : {e}')
+        
+        try:     
+            browser_tool.browser({
+                "action": {
+                "type": "screenshot",
+                "session_name": "google-session",
+                "path": "sohampirale.png"  # Optional - omit to get base64
+                }
+            })
+
+        except Exception as e:       
+            print(f'Error : {e}')
+            
         return f"🎥 STREAMING READY! {page.url}"
 
     print("❌ No google-session yet")
