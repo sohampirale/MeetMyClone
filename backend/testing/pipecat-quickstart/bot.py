@@ -325,6 +325,7 @@ async def _async_present_webpage(session_name:str):
                     "session_name": session_name
                 }
             })
+            print(f'screenshot_result : {screenshot_result}')
             if screenshot_result.get("status") != "success":
                 await asyncio.sleep(0.5)
                 continue
