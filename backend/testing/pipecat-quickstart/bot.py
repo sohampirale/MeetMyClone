@@ -630,7 +630,7 @@ async def _execute_browser_background(browser_input: BrowserInput):
         print(f'❌ Browser action error: {e}')
 
 
-tools=[browser,init_browser_session,set_page_instance,smart_background_agents,present_webpage,stop_webpage_present]
+tools=[browser_tool.browser,init_browser_session,set_page_instance,smart_background_agents,present_webpage,stop_webpage_present]
 
 browser_agent = Agent(
     model=model,
@@ -640,11 +640,12 @@ browser_agent = Agent(
 
 async def _invoke_browser_agent_async(prompt: str):
     """Invoke agent on separate thread."""
+    global browser_agent
     print('Inside _invoke_browser_agent_async')
     try:
         # Run synchronous agent.invoke() on thread
         result = await asyncio.to_thread(
-            agent.invoke_async,  
+            browser_agent,  
             prompt
         )
         print(f'✅ Agent result: {result}')
@@ -692,7 +693,7 @@ agent = Agent(
         PATTERN: say → assign → say → END (NO TEXT OUTPUT)
 
         EXAMPLES:
-        "open google" → say_to_user(anymessage) + assign_task_to_browser_agent(task) → END
+        "open google" → say_to_user(anymessage) + assign_task_to_browser_agent(task) → return empty string ""
     """
 
 )
