@@ -652,7 +652,7 @@ async def _invoke_browser_agent_async(prompt: str):
         print(f'❌ _invoke_browser_agent_async error: {e}')
 
 @tool
-def assign_task_to_browser_agent(task:str):
+async def assign_task_to_browser_agent(task:str):
     """Tool to assign browser operations and things to the specialized agent
     Args:
     task:str = task description to perform with browser tools
