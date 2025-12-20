@@ -78,18 +78,25 @@ from pipecat.frames.frames import OutputImageRawFrame  # adjust path if needed
 
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContextFrame
 from pipecat.processors.frameworks.strands_agents import StrandsAgentsProcessor
+from concurrent.futures import ThreadPoolExecutor
+executor = ThreadPoolExecutor(max_workers=3)
 
 task=None
+tts_processor=None
 logger.info("✅ All components loaded successfully!")
 
 load_dotenv(override=True)
-
+from typing import Dict,List,Any
 from strands import Agent,tool
 from strands.models.litellm import LiteLLMModel
 from strands_tools import calculator # Import the calculator tool
 from typing import List,Tuple
 from pydantic import BaseModel, Field
 from strands_tools.browser import LocalChromiumBrowser
+from strands_tools.browser.models import BrowserInput
+from pathlib import Path
+BASE_DIR = Path(__file__).parent
+
 
 class TaskJob(BaseModel):
     agent: str = Field(..., description="Name of the agent")
@@ -316,26 +323,52 @@ def stop_webpage_present():
     return "Stopped presenting webpage to the user"
 
 async def _async_present_webpage(session_name:str):
-    global should_present_webpage
+    global should_present_webpage,task,executor
+    loop = asyncio.get_event_loop()
+
     while should_present_webpage==True:
         try:
-            screenshot_result = browser_tool.browser({
-                "action": {
-                    "type": "screenshot",
-                    "session_name": session_name
-                }
-            })
-            print(f'screenshot_result : {screenshot_result}')
+            #screenshot_result = browser_tool.browser({
+            #    "action": {
+            #        "type": "screenshot",
+            #        "session_name": session_name
+            #    }
+            #})
+            #screenshot_result = await loop.run_in_executor(
+            #    executor,
+            #    lambda: browser_tool.browser({
+            #        "action": {
+            #            "type": "screenshot",
+            #            "session_name": session_name
+            #        }
+            #    })
+            #)
+
+            #with thread same contect copied
+            screenshot_result = await asyncio.to_thread(  # ✅ NON-BLOCKING
+              browser_tool.browser,
+              {"action": {"type": "screenshot", "session_name": session_name}}
+            )
+
+            
+            #print(f'screenshot_result : {screenshot_result}')
             if screenshot_result.get("status") != "success":
                 await asyncio.sleep(0.5)
                 continue
 
+            text_msg = screenshot_result['content'][0]['text']
+            filepath = text_msg.replace('Screenshot saved as ', '').strip()
+            
                 # 2) Extract base64 image from content
-            b64_image = screenshot_result["content"][1]["data"]
+            #b64_image = screenshot_result["content"][1]["data"]
 
-            # 3) Decode base64 → bytes → PIL → numpy
-            img_bytes = base64.b64decode(b64_image)
-            img = Image.open(BytesIO(img_bytes)).convert("RGB")
+            ## 3) Decode base64 → bytes → PIL → numpy
+            #img_bytes = base64.b64decode(b64_image)
+            #img = Image.open(BytesIO(img_bytes)).convert("RGB")
+            #TODO use image path to psuh down
+            FINAL_IMAGE_PATH = BASE_DIR / filepath
+            print(f'FINAL_IMAGE_PATH : {FINAL_IMAGE_PATH}')
+            img = Image.open(FINAL_IMAGE_PATH).convert("RGB")
             arr = np.array(img)
             h, w, c = arr.shape
             size = (w, h)
@@ -347,12 +380,16 @@ async def _async_present_webpage(session_name:str):
                 size=size,
                 format="RGB",
             )
-            await task.queue_frames([frame])
+            print(f'Pushed image frame : {frame}')
+            global tts_processor
+            await tts_processor.push_frame(frame)
+            #await task.queue_frames([frame])
         except Exception as e:
             print(f'Error in _async_present_webpage : {e}')
 
         # 5) Small delay to control “FPS”
         await asyncio.sleep(0.5)
+
 @tool
 async def present_webpage(session_name:str):
     """Tool to present the webpage opened in browser to the user in meeting
@@ -497,7 +534,108 @@ model = LiteLLMModel(
     },
 )
 
-tools=[browser_tool.browser,init_browser_session,set_page_instance,smart_background_agents,present_webpage,stop_webpage_present]
+@tool
+async def browser(browser_input: BrowserInput) -> Dict[str, Any]:
+    """
+    Browser automation tool for web scraping, testing, and automation tasks.
+
+    This tool provides comprehensive browser automation capabilities using Playwright
+    with support for multiple browser engines. It offers session management, tab control,
+    page interactions, content extraction, and advanced automation features.
+
+    Usage with Strands Agent:
+    ```
+    from strands import Agent
+    from strands_tools.browser import Browser
+
+    # Create the browser tool
+    browser = Browser()
+    agent = Agent(tools=[browser.browser])
+
+    # Initialize a session
+    agent.tool.browser(
+        browser_input={
+            "action": {
+                "type": "init_session",
+                "description": "Example session",
+                "session_name": "example-session"
+            }
+        }
+    )
+
+    # Navigate to a page
+    agent.tool.browser(
+        browser_input={
+            "action": {
+                "type": "navigate",
+                "url": "https://example.com",
+                "session_name": "example-session"
+            }
+        }
+    )
+
+    # Close the browser
+    agent.tool.browser(
+        browser_input={
+            "action": {
+                "type": "close",
+                "session_name": "example-session"
+            }
+        }
+    )
+    ```
+
+    Args:
+        browser_input: Structured input containing the action to perform.
+
+    Returns:
+        Dict containing execution results (returns immediately while action executes in background).
+    """
+    # Fire & forget - execute in background
+    print(f'browser_input : {browser_input}')
+    asyncio.create_task(
+        _execute_browser_background(browser_input)
+    )
+    
+    # Return immediately to LLM
+    action_type = "browser action"
+    try:
+        if isinstance(browser_input, dict):
+            action_type = browser_input.get("action", {}).get("type", "browser action")
+        else:
+            action_type = browser_input.action.type
+    except:
+        pass
+    
+    return {
+        "status": "started",
+        "content": [{
+            "text": f"✅ {action_type.title()} started in background. This may take a few seconds to complete."
+        }]
+    }
+
+
+async def _execute_browser_background(browser_input: BrowserInput):
+    """Execute browser action in background on separate thread."""
+    global browser_tool
+    try:
+        result = await asyncio.to_thread(
+            browser_tool.browser,
+            browser_input
+        )
+        print(f'✅ Browser action completed: {result}')
+    except Exception as e:
+        print(f'❌ Browser action error: {e}')
+
+
+tools=[browser,init_browser_session,set_page_instance,smart_background_agents,present_webpage,stop_webpage_present]
+
+browser_mcp_agent = Agent(
+    model=model,
+    tools=tools,
+    system_prompt="You are an expert agent in using Browser Tools, Your job is to understand query given to you and use tools wisely to present it in the realtime meeting"
+)
+
 
 agent = Agent(
     model=model,
@@ -578,7 +716,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         api_key=os.getenv("CARTESIA_API_KEY"),
         voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",  # British Reading Lady
     )
-    
+    global tts_processor
+    tts_processor=tts
     aws_strands=AWSStrandsProcessor()
     
     strands_agent_llm = StrandsAgentsProcessor(agent=agent)
@@ -655,6 +794,7 @@ async def bot(runner_args: RunnerArguments):
         "webrtc": lambda: TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
+            video_out_enabled=True,
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.4)),
             turn_analyzer=LocalSmartTurnAnalyzerV3(),
         ),
