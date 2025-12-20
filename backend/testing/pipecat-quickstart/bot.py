@@ -630,18 +630,43 @@ async def _execute_browser_background(browser_input: BrowserInput):
 
 tools=[browser,init_browser_session,set_page_instance,smart_background_agents,present_webpage,stop_webpage_present]
 
-browser_mcp_agent = Agent(
+browser_agent = Agent(
     model=model,
     tools=tools,
     system_prompt="You are an expert agent in using Browser Tools, Your job is to understand query given to you and use tools wisely to present it in the realtime meeting"
 )
 
+async def _invoke_browser_agent_async(prompt: str):
+    """Invoke agent on separate thread."""
+    print('Inside _invoke_browser_agent_async')
+    try:
+        # Run synchronous agent.invoke() on thread
+        result = await asyncio.to_thread(
+            agent.invoke_async,  
+            prompt
+        )
+        print(f'✅ Agent result: {result}')
+    except Exception as e:
+        print(f'❌ _invoke_browser_agent_async error: {e}')
+
+@tool
+def assign_task_to_browser_agent(task:str):
+    """Tool to assign browser operations and things to the specialized agent
+    Args:
+    task:str = task description to perform with browser tools
+    """
+    
+    print(f'Inside assign_task_to_browser_agent task : {task}')
+    
+    asyncio.create_task(_invoke_browser_agent_async(task))
+    return f"✅ Task assigned to the browser_agent, continue interacting with user until browser_agent finishes the task"
 
 agent = Agent(
     model=model,
-    tools=tools,
+    tools=[assign_task_to_browser_agent],
     # system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them,their findings will be available shortly ,tell user that you have agents working in background and meantime assist user by yourself with whatever knowledge you have! dont give too much technical internal details as well , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent,call the tool 'smart_background_agent' before responding to user and keep interacting onwards, Do not wait for information to come you have to continue interacting with user with whatever you know, IMP : after successfull browser opening call the tool 'present_webpage'"
-    system_prompt="You are a voice ai agent in realtime meeting with user, you are expert in using browser with tools atatched to you, everytime you open a browser use tool 'present_webpage' and 'stop_webpage_present' after user says close webpage"
+    # system_prompt="You are a voice ai agent in realtime meeting with user, you are expert in using browser with tools atatched to you, everytime you open a browser use tool 'present_webpage' and 'stop_webpage_present' after user says close webpage"
+    system_prompt="You are an expert voice ai agent in talking with users in realtime meeting, when asked for any browser related operation assign that task to the 'assign_task_to_browser_agent' tool and interact with the user with 'say_to_user' tool and not your output"    
 )
 
 
