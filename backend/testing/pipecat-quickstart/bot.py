@@ -58,7 +58,8 @@ from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
-from pipecat.frames.frames import Frame
+from pipecat.frames.frames import Frame,LLMTextFrame
+
 #from pipecat.frames.frame_direction import FrameDirection  # Correct location
 from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.frames.frames import (
@@ -83,6 +84,7 @@ executor = ThreadPoolExecutor(max_workers=3)
 
 task=None
 tts_processor=None
+llm_processor=None
 logger.info("✅ All components loaded successfully!")
 
 load_dotenv(override=True)
@@ -661,12 +663,38 @@ def assign_task_to_browser_agent(task:str):
     asyncio.create_task(_invoke_browser_agent_async(task))
     return f"✅ Task assigned to the browser_agent, continue interacting with user until browser_agent finishes the task"
 
+@tool
+async def say_to_user(text:str):
+    """Tool to send transcript for TTS in realtime meeting
+    Args:
+    text:str = This string will be conevrted to audio and sent to user in meeting
+    """
+    global llm_processor
+    await llm_processor.push_frame(LLMTextFrame(text))
+    return "request text sent to user by TTS"
+    
+    
+    
+
 agent = Agent(
     model=model,
-    tools=[assign_task_to_browser_agent],
+    tools=[assign_task_to_browser_agent,say_to_user],
     # system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them,their findings will be available shortly ,tell user that you have agents working in background and meantime assist user by yourself with whatever knowledge you have! dont give too much technical internal details as well , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent,call the tool 'smart_background_agent' before responding to user and keep interacting onwards, Do not wait for information to come you have to continue interacting with user with whatever you know, IMP : after successfull browser opening call the tool 'present_webpage'"
     # system_prompt="You are a voice ai agent in realtime meeting with user, you are expert in using browser with tools atatched to you, everytime you open a browser use tool 'present_webpage' and 'stop_webpage_present' after user says close webpage"
-    system_prompt="You are an expert voice ai agent in talking with users in realtime meeting, when asked for any browser related operation assign that task to the 'assign_task_to_browser_agent' tool and interact with the user with 'say_to_user' tool and not your output"    
+    # system_prompt="You are an expert voice ai agent in talking with users in realtime meeting, when asked for any browser related operation assign that task to the 'assign_task_to_browser_agent' tool and interact with the user with 'say_to_user' tool and not your output"    
+    system_prompt="""
+        You are an expert voice AI agent for real-time meetings.
+
+        RULES:
+        1. say_to_user("message") → ALL speech ONLY
+        2. assign_task_to_browser_agent("simple instruction") → Browser tasks ONLY
+
+        PATTERN: say → assign → say → END (NO TEXT OUTPUT)
+
+        EXAMPLES:
+        "open google" → say_to_user(anymessage) + assign_task_to_browser_agent(task) → END
+    """
+
 )
 
 
@@ -745,7 +773,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     tts_processor=tts
     aws_strands=AWSStrandsProcessor()
     
+    global llm_processor
     strands_agent_llm = StrandsAgentsProcessor(agent=agent)
+    llm_processor=strands_agent_llm
     # llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
     llm = GoogleLLMService(
         api_key=os.getenv("GEMINI_API_KEY"),
