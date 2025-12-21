@@ -616,7 +616,8 @@ tools=[browser_tool.browser,present_webpage,stop_webpage_present]
 browser_agent = Agent(
     model=model,
     tools=tools,
-    system_prompt="You are an expert agent in using Browser Tools, Your job is to understand query given to you and use tools wisely to present it in the realtime meeting"
+#    system_prompt="You are an expert agent in using Browser Tools, Your job is to understand query given to you and use tools wisely to present it in the realtime meeting"
+    system_prompt="You are an expert agent in using Browser Tools, Your job is to understand query given to you and use tools wisely to present it in the realtime meeting,whenevr you open browser for first time call function 'present_webpage'"
 )
 
 async def _invoke_browser_agent_async(prompt: str):
