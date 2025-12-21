@@ -118,9 +118,20 @@ agent = Agent(
 def run():
     test="12"
     with mcp_client:
-        #tools = mcp_client.list_tools_sync()
+        tools = mcp_client.list_tools_sync()
+        
+        print("🔧 ALL MCP TOOLS:")
+        print("=" * 80)
+        for i, tool in enumerate(tools, 1):
+            print(f"\n{i}. {tool.mcp_tool.name}")
+            print(f"   📝 Description: {tool.mcp_tool.description}")
+            print(f"   ⚙️  Input Schema: {tool.mcp_tool.inputSchema}")
+            print(f"   📋 Annotations: {tool.mcp_tool.annotations}")
+            print("-" * 50)
+
         #tools.append(set_page_instance)
-        tools=[browser_tool.browser,init_browser_session,set_page_instance]
+        #tools=[browser_tool.browser,init_browser_session,set_page_instance]
+        #tools =[browser_tool.browser]
         tracked_tools = PageTrackingMCP(tools)
         print(f'All mcp tools : {tools}')
         agent = Agent(tools=tools, model=model,system_prompt='You are an expert in using playwright mcp for browser actions,once the browser has be successfully launched and started clearly, you must use the tool "set_page_instance" it is very imp!and after opening the browser second time  ')

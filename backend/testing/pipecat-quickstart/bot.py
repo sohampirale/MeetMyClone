@@ -620,7 +620,7 @@ browser_agent = Agent(
     system_prompt="You are an expert agent in using Browser Tools, Your job is to understand query given to you and use tools wisely to present it in the realtime meeting,whenevr you open browser for first time call function 'present_webpage'"
 )
 
-async def _invoke_browser_agent_async(prompt: str):
+async def _invoke_browser_agent_async(task: str):
     """Invoke agent on separate thread."""
     global browser_agent
     print('Inside _invoke_browser_agent_async')
@@ -628,7 +628,7 @@ async def _invoke_browser_agent_async(prompt: str):
         # Run synchronous agent.invoke() on thread
         result = await asyncio.to_thread(
             browser_agent,  
-            prompt
+            task
         )
         print(f'✅ Agent result: {result}')
     except Exception as e:
@@ -661,26 +661,32 @@ async def say_to_user(text:str):
 
 agent = Agent(
     model=model,
-    tools=[assign_task_to_browser_agent,say_to_user],
-    # system_prompt="You are a voice ai agent in realtime meeting with user,use tool 'smart_backgroud_agents' who will help you in the backgroud with info and task you delegate to them,their findings will be available shortly ,tell user that you have agents working in background and meantime assist user by yourself with whatever knowledge you have! dont give too much technical internal details as well , and also in your resposnes to user add fillers like um hm or any more where appropriate to make it sound more humanistic, be more of real human in voice and not agent,call the tool 'smart_background_agent' before responding to user and keep interacting onwards, Do not wait for information to come you have to continue interacting with user with whatever you know, IMP : after successfull browser opening call the tool 'present_webpage'"
-    # system_prompt="You are a voice ai agent in realtime meeting with user, you are expert in using browser with tools atatched to you, everytime you open a browser use tool 'present_webpage' and 'stop_webpage_present' after user says close webpage"
-    # system_prompt="You are an expert voice ai agent in talking with users in realtime meeting, when asked for any browser related operation assign that task to the 'assign_task_to_browser_agent' tool and interact with the user with 'say_to_user' tool and not your output"    
+    tools=[assign_task_to_browser_agent,say_to_user], 
     system_prompt="""
         You are an expert voice AI agent for real-time meetings.
-
-        RULES:
-        1. say_to_user("message") → ALL speech ONLY
-        2. assign_task_to_browser_agent("simple instruction") → Browser tasks ONLY
-
-        PATTERN: say → assign → say → END (NO TEXT OUTPUT)
-
-        EXAMPLES:
-        "open google" → say_to_user(anymessage) + assign_task_to_browser_agent(task) → return empty string ""
+	
+	In voice meeting latency is very imp
+	
+	Your job is to keep latency low and interact with user wisely
+	
+	Tools
+	1.say_to_user : converts text given by you into audio by TTS and it is sent to the user
+	2.other tools are async meaning they will work in backgroud on different thread in order to keep your nature non blocking and low latency
+	
+	IMP:
+	when using any tool you must use the 'say_to_user' first and then the tool otherwise it feels the voice bot is stuck and slow
+	
+	Everythign you do must be very cautious about latency and it should feel interactive with the user
+	
+	do not add '.' in say_to_user tool call 
+	
+  	your final response text will also be sent to the user in audio so be careful and synchornized no explaination needed
+  	DO  NOT REPEAT the same thing said using say_to_user
     """
 
 )
 
-
+#
 def dump_frame(frame):
     print(f"\n=== {frame.__class__.__name__} ===")
     for attr, value in vars(frame).items():
