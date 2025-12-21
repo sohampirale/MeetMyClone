@@ -23,9 +23,9 @@ import os
 
 from dotenv import load_dotenv
 from loguru import logger
-from strands import Agent,tool
-from strands.models.litellm import LiteLLMModel
-from strands_tools import calculator # Import the calculator tool
+#from strands import Agent,tool
+#from strands.models.litellm import LiteLLMModel
+#from strands_tools import calculator # Import the calculator tool
 from typing import List,Tuple
 from pydantic import BaseModel, Field
 print("🚀 Starting Pipecat bot...")
@@ -106,7 +106,7 @@ from pipecat.processors.aggregators.openai_llm_context import (
     OpenAILLMContext,
     OpenAILLMContextFrame,
 )
-
+tts_processor=None
 logger.info("✅ All components loaded successfully!")
 
 load_dotenv(override=True)
@@ -353,14 +353,14 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
          
     should_present_webpage=True
 
-    @tool
+    #@tool
     def stop_webpage_present():
         """Tool to stop presenting opened webpage to the user"""
         global should_present_webpage
         should_present_webpage=False
         return "Stopped presenting webpage to the user"
 
-    @tool
+    #@tool
     async def present_webpage(session_name:str):
         """Tool to present the webpage opened in browser to the user in meeting
         Args:
@@ -381,7 +381,12 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     custom_processor= CustomProcessor()
     
     async def show_video(task, video_path,start_time=0,audio_out:bool=True):
+        global tts_processor
         
+        #await tts_processor.started()  # ← This blocks until StartFrame received
+        await asyncio.sleep(5)  # 100ms wait, other tasks run
+
+        print(f'---------------------------INSIDE SHOW_VIDEO--------------------------------------')
         cap = cv2.VideoCapture(str(video_path))
         video_showing=initial_state['video']['video_showing']
         video_paused = initial_state['video']['video_paused']
@@ -444,19 +449,28 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                 format="RGB"
             )
             
-            await task.queue_frames([video_frame])
+
         
         
             if audio_out:
                 audio_bytes = ffmpeg.stdout.read(AUDIO_CHUNK_SIZE)
                 if audio_bytes:
                     audio_frame = OutputAudioRawFrame(audio=audio_bytes, sample_rate=16000,num_channels=1)
-                    await task.queue_frames([audio_frame])
-
+                    await task.queue_frames([audio_frame,video_frame])
+                    #await tts_processor.push_frames([audio_frame,video_frame])
+                    #await tts_processor.push_frames([video_frame,audio_frame])
+                    #await tts_processor.push_frame(image_frame)
+            else:
+            	    #await tts_processor.push_frame(video_frame)
+                    await task.queue_frames([audio_frame,video_frame])
             video_showing=initial_state['video']['video_showing']
             video_paused=initial_state['video']['video_paused']
             await asyncio.sleep(delay)
 
+
+	
+	
+	
     async def show_webpage(task, url, refresh_rate=0.3):
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
@@ -492,6 +506,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         api_key=os.getenv("CARTESIA_API_KEY"),
         voice_id=voice_clone_id, 
     )
+    global tts_processor
+    tts_processor = custom_processor
     
     llm = GoogleLLMService(
         api_key=os.getenv("GEMINI_API_KEY"),
@@ -522,10 +538,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             stt,
             transcript_processor.user(),
             context_aggregator.user(),  # User responses
-            custom_processor,
+            #custom_processor,
             gated_buffer_processor,
             # llm,  # LLM
             tts,  # TTS
+            custom_processor,
             transport.output(),  # Transport bot output
             transcript_processor.assistant(),
             context_aggregator.assistant(),  # Assistant spoken responses
@@ -549,7 +566,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         BASE_DIR = Path(__file__).parent
         IMAGE_PATH = BASE_DIR / "data" / "images" / "github_profile.png"
 
-        VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
+        VIDEO_PATH= BASE_DIR / "data" / "videos" / "intro.mp4"
         
         #await gated_buffer_processor.close_gate()
         
@@ -578,11 +595,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     # loop.call_later(8, lambda: pause_video())
     
-    loop.call_later(5, lambda: stop_video())
+    loop.call_later(15, lambda: stop_video())
     
     # loop.call_later(25, lambda: start_video_at_timestamp(5))
      
-    loop.call_later(15, lambda: asyncio.create_task(show_webpage(task,'https://google.com')))
+    #loop.call_later(15, lambda: asyncio.create_task(show_webpage(task,'https://google.com')))
     loop.call_later(15, lambda: asyncio.create_task(tts.push_frame(TTSSpeakFrame('This message is pushed by the STT frame'))))
      
     
