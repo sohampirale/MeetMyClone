@@ -272,48 +272,27 @@ async def run_agent_job(agent: any, task: str):
 
 browser_tool = LocalChromiumBrowser()
 
-@tool
-async def set_page_instance():
-    """Extract REAL page from session"""
-    global browser_tool, cnt, current_browser_page
+# @tool
+# async def set_page_instance():
+#     """Extract REAL page from session"""
+#     global browser_tool, cnt, current_browser_page
 
-    session_name = "google-session"
+#     session_name = "google-session"
 
-    print("\n🔍 CHECKING SESSIONS...")
-    print(f"Sessions: {list(browser_tool._sessions.keys())}")
-    print(f"browser_tool._sessions: {browser_tool._sessions}")
+#     print("\n🔍 CHECKING SESSIONS...")
+#     print(f"Sessions: {list(browser_tool._sessions.keys())}")
+#     print(f"browser_tool._sessions: {browser_tool._sessions}")
 
-    if session_name in browser_tool._sessions:
-        session = browser_tool._sessions[session_name]
-        page = session.page
+#     if session_name in browser_tool._sessions:
+#         session = browser_tool._sessions[session_name]
+#         page = session.page
 
-        print(f"✅ SUCCESS! PAGE FOUND: {page}")
-        print(f"✅ URL: {page.url}")
-        print(f"✅ Type: {type(page)}")
-        
-        try:     
-            # ✅ CORRECT: await the browser_tool.browser() call
-            screenshot_result = browser_tool.browser({
-                "action": {
-                    "type": "screenshot",
-                    "session_name": "google-session",
-                    #"path": "./soham.png"  # Add path to avoid base64 issues
-                }
-            })
-            print(f'✅ Screenshot taken successfully: {screenshot_result}')
-            
-            # Set global page
-            current_browser_page = page
-            return f"🎥 STREAMING READY! {page.url} | Screenshot: debug.png"
+#         print(f"✅ SUCCESS! PAGE FOUND: {page}")
+#         print(f"✅ URL: {page.url}")
+#         print(f"✅ Type: {type(page)}")
 
-        except Exception as e:       
-            print(f'❌ Screenshot Error: {e}')
-            import traceback
-            traceback.print_exc()
-            return f"Page ready but screenshot failed: {e}"
-            
-    print("❌ No google-session yet")
-    return "Run 'open google.com' first"
+#     print("❌ No google-session yet")
+#     return "page instance set successfully"
 
 should_present_webpage=True
 
@@ -489,20 +468,20 @@ async def _run_background_agents(task: str):
         f"Task is {task}. Agents: {all_availaible_agents}"
     )
 
-@tool
-async def init_browser_session():
-    """Initialize AND verify session"""
-    global browser_tool
-    await browser_tool.init_session("main")
+# @tool
+# async def init_browser_session():
+#     """Initialize AND verify session"""
+#     global browser_tool
+#     await browser_tool.init_session("main")
     
-    # CHECK if session was created
-    print(f"Sessions after init: {browser_tool._sessions}")
-    if "main" in browser_tool._sessions:
-        print("✅ 'main' session created!")
-    else:
-        print("❌ Session NOT created!")
+#     # CHECK if session was created
+#     print(f"Sessions after init: {browser_tool._sessions}")
+#     if "main" in browser_tool._sessions:
+#         print("✅ 'main' session created!")
+#     else:
+#         print("❌ Session NOT created!")
     
-    return "Session initialized"
+#     return "Session initialized"
 
 @tool
 async def smart_background_agents(task:str):
@@ -630,7 +609,9 @@ async def _execute_browser_background(browser_input: BrowserInput):
         print(f'❌ Browser action error: {e}')
 
 
-tools=[browser_tool.browser,init_browser_session,set_page_instance,smart_background_agents,present_webpage,stop_webpage_present]
+# tools=[browser_tool.browser,init_browser_session,set_page_instance,smart_background_agents,present_webpage,stop_webpage_present]
+tools=[browser_tool.browser,present_webpage,stop_webpage_present]
+
 
 browser_agent = Agent(
     model=model,
