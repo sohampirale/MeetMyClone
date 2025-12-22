@@ -380,7 +380,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         video_paused = initial_state['video']['video_paused']
         
         if not cap.isOpened():
-            await gated_buffer_processor.open_gate()
+            #await gated_buffer_processor.open_gate()
             
             print("Error: Cannot open video file")
             return
@@ -422,7 +422,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                 # continue
                 
                 # when video ends stop the playback
-                await gated_buffer_processor.open_gate()
+                #await gated_buffer_processor.open_gate()
                 break
             # Convert BGR → RGB since cv2 uses BGR
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -436,24 +436,28 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                 size=size,
                 format="RGB"
             )
-            
 
-        
-        
             if audio_out:
-                audio_bytes = ffmpeg.stdout.read(AUDIO_CHUNK_SIZE)
+                audio_bytes = await asyncio.to_thread(
+                 ffmpeg.stdout.read, AUDIO_CHUNK_SIZE
+                )
                 if audio_bytes:
                     audio_frame = OutputAudioRawFrame(audio=audio_bytes, sample_rate=16000,num_channels=1)
-                    await task.queue_frames([audio_frame,video_frame])
+                    #await task.queue_frame(video_frame)
+                    await task.queue_frame(audio_frame)
                     #await tts_processor.push_frames([audio_frame,video_frame])
                     #await tts_processor.push_frames([video_frame,audio_frame])
                     #await tts_processor.push_frame(image_frame)
-            else:
+            
             	    #await tts_processor.push_frame(video_frame)
-                    await task.queue_frames([audio_frame,video_frame])
+            await task.queue_frame(video_frame)
             video_showing=initial_state['video']['video_showing']
             video_paused=initial_state['video']['video_paused']
             await asyncio.sleep(delay)
+        cap.release()
+           if audio_out:
+           ffmpeg.kill()
+           ffmpeg.wait()
 
 
 	
@@ -528,7 +532,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             transcript_processor.user(),
             context_aggregator.user(),  # User responses
             #custom_processor,
-            gated_buffer_processor,
+            #gated_buffer_processor,
             # llm,  # LLM
             tts,  # TTS
             custom_processor,
@@ -556,7 +560,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         BASE_DIR = Path(__file__).parent
         IMAGE_PATH = BASE_DIR / "data" / "images" / "github_profile.png"
 
-        VIDEO_PATH= BASE_DIR / "data" / "videos" / "intro.mp4"
+        VIDEO_PATH= BASE_DIR / "data" / "videos" / "harkirat.mp4"
         
         #await gated_buffer_processor.close_gate()
         
@@ -585,7 +589,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     # loop.call_later(8, lambda: pause_video())
     
-    loop.call_later(15, lambda: stop_video())
+    #loop.call_later(15, lambda: stop_video())
     
     # loop.call_later(25, lambda: start_video_at_timestamp(5))
      
@@ -603,6 +607,7 @@ async def bot(runner_args: RunnerArguments):
         "daily": lambda: DailyParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
+            video_out_enabled=True,
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
             turn_analyzer=LocalSmartTurnAnalyzerV3(),
         ),
@@ -611,6 +616,47 @@ async def bot(runner_args: RunnerArguments):
             audio_out_enabled=True,
             video_in_enabled=False,    # bot does NOT consume video
             video_out_enabled=True,    # bot WILL produce video
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            turn_analyzer=LocalSmartTurnAnalyzerV3(),
+        ),
+    }
+    
+    
+    transport_params = {
+     "daily": lambda: DailyTransport(
+        room_url="https://psychsuite.daily.co/testing",  # ← Your existing room
+        token=None,  # No token for open rooms
+        bot_name="My Voice Bot",
+        api_key=os.getenv('DAILY_API_KEY'),
+        params=DailyParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            video_out_enabled=True,  # Your screenshots/video
+            api_key=os.getenv('DAILY_API_KEY'),
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            turn_analyzer=LocalSmartTurnAnalyzerV3(),
+        )
+     ),
+     "webrtc": lambda: TransportParams(  # Your existing WebRTC
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+        video_in_enabled=False,
+        video_out_enabled=True,
+        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+        turn_analyzer=LocalSmartTurnAnalyzerV3(),
+     ),
+    }
+    
+    transport_params = {
+        "daily": lambda: DailyParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            turn_analyzer=LocalSmartTurnAnalyzerV3(),
+        ),
+        "webrtc": lambda: TransportParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
             turn_analyzer=LocalSmartTurnAnalyzerV3(),
         ),
