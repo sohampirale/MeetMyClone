@@ -120,46 +120,6 @@ data={
     ]
 }
 
-async def send_avatar_image(pipeline, image_path: str):
-    # 1) Load and convert to RGB
-    img = Image.open(image_path).convert("RGB")
-    width, height = img.size
-
-    # 2) Get raw bytes
-    img_bytes = img.tobytes()  # RGB bytes
-
-    # 3) Wrap in OutputImageRawFrame
-    frame = OutputImageRawFrame(
-        image=img_bytes,
-        size=(width, height),
-        format="RGB",
-    )
-
-    # 4) Push into the pipeline DOWNSTREAM so it reaches transport.output()
-    await pipeline.push_frame(frame)
-
-async def show_image(task, image_path:str):
-    img = Image.open(image_path).convert("RGB")
-    arr = np.array(img)
-
-    height, width, channels = arr.shape
-    size = (width, height)
-    data = arr.tobytes()
-
-    frame = OutputImageRawFrame(image=data,size=size,format="RGB")
-    await task.queue_frames([frame])
-
-async def stop_showing_image(task, image_path:str):
-    img = Image.open(image_path).convert("RGB")
-    arr = np.array(img)
-
-    height, width, channels = arr.shape
-    size = (width, height)
-    data = arr.tobytes()
-
-    frame = OutputImageRawFrame(image=data,size=size,format="RGB")
-    await task.queue_frames([frame])
-
 
 
 
@@ -247,7 +207,7 @@ class CustomObserver(BaseObserver):
             print(f'OpenAILLMContextFrame : {OpenAILLMContextFrame}')
             
 
-
+task=None
             
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
@@ -267,8 +227,36 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         },
         "user":{
             "given_avatar":True
+        },
+        "screen":{
+            "presenting"
         }
     }
+
+    async def show_image(image_path:str):
+        global task
+        img = Image.open(image_path).convert("RGB")
+        arr = np.array(img)
+
+        height, width, channels = arr.shape
+        size = (width, height)
+        data = arr.tobytes()
+
+        frame = OutputImageRawFrame(image=data,size=size,format="RGB")
+        await task.queue_frames([frame])
+
+    # async def stop_showing_image(task, image_path:str):
+    #     img = Image.open(image_path).convert("RGB")
+    #     arr = np.array(img)
+
+    #     height, width, channels = arr.shape
+    #     size = (width, height)
+    #     data = arr.tobytes()
+
+    #     frame = OutputImageRawFrame(image=data,size=size,format="RGB")
+    #     await task.queue_frames([frame])
+
+
     
     def stop_showing_image():
         events.emit("image.stop_showing_image",{})
@@ -315,7 +303,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         else :
             IMAGE_PATH = BASE_DIR / "data" / "images" / "default_avatar.png"
             
-        asyncio.create_task(show_image(task,IMAGE_PATH))
+        asyncio.create_task(show_image(IMAGE_PATH))
     
     events.on("image.show_avatar",on_show_avatar)
     
@@ -346,7 +334,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         if video_task:
             video_task.cancel()
             
-        video_task=asyncio.create_task(show_video(task,filepath,start_time))
+        video_task=asyncio.create_task(show_video(filepath,start_time))
         
         print(f'------VIDEO RESTARTED AT TIMESTAMP : {start_time}-------')
          
@@ -380,8 +368,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     custom_observer = CustomObserver()
     custom_processor= CustomProcessor()
     
-    async def show_video(task, video_path,start_time=0,audio_out:bool=True):
-        global tts_processor
+    async def show_video(video_path,start_time=0,audio_out:bool=True):
+        global tts_processor,task
         
         #await tts_processor.started()  # ← This blocks until StartFrame received
         await asyncio.sleep(5)  # 100ms wait, other tasks run
@@ -471,7 +459,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 	
 	
 	
-    async def show_webpage(task, url, refresh_rate=0.3):
+    async def show_webpage(url, refresh_rate=0.3):
+        global task
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
             page = await browser.new_page()
@@ -548,6 +537,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             context_aggregator.assistant(),  # Assistant spoken responses
         ]
     )
+    global task
 
     task = PipelineTask(
         pipeline,
@@ -570,8 +560,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         
         #await gated_buffer_processor.close_gate()
         
-        # asyncio.create_task(show_image(task, IMAGE_PATH))
-        video_task=asyncio.create_task(show_video(task, VIDEO_PATH,5))
+        # asyncio.create_task(show_image( IMAGE_PATH))
+        video_task=asyncio.create_task(show_video(VIDEO_PATH,5))
         initial_state["video"]['video_task']=video_task
         initial_state["video"]['filepath']=VIDEO_PATH
         
