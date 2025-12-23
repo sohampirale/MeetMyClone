@@ -8,7 +8,10 @@ dependencies = [
     "pipecat-ai-cli",
     "np",
     "pyee",
-    "playwright"
+    "playwright",
+    "python-pptx>=1.0.2",
+    "pillow>=11.3.0",
+    "pdf2image>=1.17.0",
 ]
 
 [dependency-groups]
