@@ -123,7 +123,9 @@ from PIL import Image
 import io
 from pathlib import Path
 from pdf2image import convert_from_path
+from strands import Agent,tool
 
+task=None
 tts_processor=None
 logger.info("✅ All components loaded successfully!")
 
@@ -225,11 +227,10 @@ class CustomObserver(BaseObserver):
             print(f'OpenAILLMContextFrame : {OpenAILLMContextFrame}')
             
 
-task=None
             
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
-    
+    global task
     events = EventEmitter()
 
     initial_state={
@@ -247,10 +248,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             "ppt_showing":True,
             "filepath":"",
             "list":[{
-                'name':"pp1",
-                "description":"ppt of JRD tata",
-                "goal":"JRD tata memory",
-                "filepath":"/data/ppts/ppt1.pdf"
+                'name':"sih",
+                "description":"ppt of SIH",
+                "goal":"Pitch SIH idea",
+                "filepath":"/data/ppts/sih/ppt2.pdf"
             }]
         },
         "user":{
@@ -261,25 +262,25 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         }
     }
 
-    async def show_ppt(task:any,pdf_path:str):
-        """Tool to present ppt"""
+    async def convert_pngs_from_pdf(pdf_dir_path:str):
         global BASE_DIR
         output_format = "png"
         try:
-            FINAL_PATH = BASE_DIR / pdf_path
-            output_dir = Path("images")
+            PDF_PATH = BASE_DIR / pdf_dir_path / "ppt.pdf"
+            PNGS_DIR = BASE_DIR / pdf_dir_path / "pngs"
+            output_dir = Path(PNGS_DIR)
             output_dir.mkdir(exist_ok=True)
             
             # Convert all PDF pages to images (non-blocking)
             images = await asyncio.to_thread(
                 convert_from_path, 
-                str(FINAL_PATH),
+                str(PDF_PATH),
                 dpi=200  # Quality: 150-300 recommended
             )
             
             # Save each page as image
             for i, image in enumerate(images, 1):
-                filename = f"page_{i:02d}.{output_format}"
+                filename = f"page_{i}.{output_format}"
                 image.save(output_dir / filename, output_format.upper())
                 print(f"✅ Saved {filename}")
             
@@ -290,9 +291,87 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             print(f'Error show_ppt : {e}')
             return f"Error: {e}"
 
+    png_frames: List[OutputImageRawFrame] = []
+
+    async def show_ppt(ppt_dir_path:str,slide_no=1):
+        """Tool to present ppt"""
+
+        global png_frames,BASE_DIR,task
+        
+        pngs_dir = BASE_DIR / ppt_dir_path / "pngs"
+
+        if not pngs_dir.exists():
+            print(f"❌ 'pngs' directory not found at {pngs_dir}")
+            return []
+        
+        # Find all page_*.png files and sort naturally (page_1.png, page_2.png, ..., page_10.png)
+        pattern = pngs_dir / "page_*.png"
+        png_files = sorted(
+            pngs_dir.glob("page_*.png"),
+            key=lambda p: int(p.stem.split("_")[1])  # Extract number from "page_1.png" -> 1
+        )
+        
+        if not png_files:
+            print("❌ No page_*.png files found")
+            return []
+        
+        png_frames = []
+        for i, img_path in enumerate(png_files, 1):
+            try:
+                img = Image.open(img_path).convert("RGB")
+                arr = np.array(img)
+                height, width = arr.shape[:2]  # Note: (height, width, channels)
+                size = (width, height)         # OutputImageRawFrame expects (width, height)
+                data = arr.tobytes()
+                
+                frame = OutputImageRawFrame(
+                    image=data,
+                    size=size,
+                    format="RGB"
+                )
+                png_frames.append(frame)
+                print(f"✅ Loaded page_{i}: {img_path.name} ({width}x{height})")
+                
+            except Exception as e:
+                print(f"❌ Failed to load {img_path}: {e}")
+        
+        try:
+            frame = png_frames[slide_no-1]
+            await task.queue_frames([frame])
+            print(f'slide no : {slide_no} pushed inot pipeline')
+        except Exception as e:
+            print(f'Error show_ppt : {e}')
+
+        print(f"✅ Loaded {len(png_frames)} PNG frames into global list")
+        return png_frames
+        
+    @tool
+    async def change_slide(slide_no:int):
+        """Tool to change slide of the ppt presentation in meeting screen
+            Args : 
+            slide_no : int = from 1 - n
+        """
+        global png_frames
+
+        try:
+            if not png_frames:
+                return "No ppt is loaded into memory yet, call the tool 'show_ppt' with the ppt_dir_path"
+
+            if slide_no> len(png_frames):
+                frame = png_frames[-1]
+                await task.queue_frames([frame])
+                return f"Total slides of ppt are : {len(png_frames)} last slide is being presented onto the screen"
+
+            frame = png_frames[slide_no-1]
+            await task.queue_frames([frame])
+            return "Requested slide is presented onto the screen"
+
+        except Exception as e:
+            print(f'Error : change_slide : {e}')
+            return "Failed to present that slide_no recheck slide_no should be (1-n)"
+
 
     async def show_image(image_path:str):
-        global task
         img = Image.open(image_path).convert("RGB")
         arr = np.array(img)
 
@@ -502,7 +581,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                     audio_frame = OutputAudioRawFrame(audio=audio_bytes, sample_rate=16000,num_channels=1)
                     await task.queue_frames([audio_frame,video_frame])
             else:
-                await task.queue_frame(video_frame)
+                await task.queue_frames([video_frame])
 
             
 
@@ -513,556 +592,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         if audio_out:
            ffmpeg.kill()
            ffmpeg.wait()
-    
-    ####sync with machine fps
-    # async def show_video(task, video_path, start_time=0, audio_out: bool=True):
-    #     global tts_processor
-    #     frame_index = 1
-    #     await asyncio.sleep(2)
-
-    #     print(f'---------------------------INSIDE SHOW_VIDEO--------------------------------------')
-    #     cap = cv2.VideoCapture(str(video_path))
-    #     video_showing = initial_state['video']['video_showing']
-        
-    #     if not cap.isOpened():
-    #         print("❌ Error: Cannot open video file")
-    #         return
-
-    #     # 🔥 FIXED: Safe FPS detection (no hanging!)
-    #     try:
-    #         fps = cap.get(cv2.CAP_PROP_FPS)
-    #         if fps <= 0 or fps > 60:  # Invalid FPS
-    #             fps = 30.0  # Safe default
-    #         print(f"📹 Detected FPS: {fps}")
-    #     except:
-    #         fps = 30.0  # Emergency fallback
-    #         print("⚠️ FPS detection failed - using 30fps")
-        
-    #     delay = 1.0 / fps
-
-    #     if start_time > 0:
-    #         cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
-
-    #     if audio_out:
-    #         ffmpeg = subprocess.Popen([
-    #             "ffmpeg", "-ss", str(start_time), "-i", str(video_path),
-    #             "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", "16000", "-"
-    #         ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    #         AUDIO_CHUNK_SIZE = 16000 * 2 // 20
-
-    #     while video_showing == True:
-    #         if initial_state['video']['video_paused']:
-    #             print("⏸️ Paused...")
-    #             await asyncio.sleep(1)
-    #             video_showing = initial_state['video']['video_showing']
-    #             continue
-            
-    #         ret, frame = cap.read()
-    #         if not ret:
-    #             print("🔄 End of video - looping...")
-    #             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    #             continue
-
-    #         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    #         h, w, c = frame_rgb.shape
-    #         size = (w, h)
-    #         buffer = frame_rgb.tobytes()
-    #         frame_index += 1
-            
-    #         video_frame = OutputImageRawFrame(image=buffer, size=size, format="RGB")
-    #         print(f'video frame : {video_frame}')
-            
-    #         if audio_out:
-    #             audio_bytes = await asyncio.to_thread(ffmpeg.stdout.read, AUDIO_CHUNK_SIZE)
-    #             if audio_bytes:
-    #                 audio_frame = OutputAudioRawFrame(audio=audio_bytes, sample_rate=16000, num_channels=1)
-    #                 await task.queue_frames([audio_frame, video_frame])
-    #         else:
-    #             await task.queue_frame(video_frame)
-
-    #         video_showing = initial_state['video']['video_showing']
-    #         await asyncio.sleep(delay)
-        
-    #     cap.release()
-    #     if audio_out:
-    #         ffmpeg.kill()
-    #         ffmpeg.wait()
-
-    #####FUll preload - High cpu usage
-    # async def show_video(task, video_path: str, start_time: float = 0, audio_out: bool = True, buffer_frames: int = 60):
-    #     """
-    #     FULLY PRELOADED video - No lag, no stutter even on slow PCs!
-        
-    #     1. Loads ALL frames + audio into RAM (2-10s startup)
-    #     2. Streams from buffer (perfect 30fps, zero decoding lag)
-    #     3. Handles pause/play via initial_state
-    #     """
-    #     print(f"🎥 PRELOADING video: {video_path} (buffer={buffer_frames}s)")
-        
-    #     # Phase 1: FULL PRELOAD (happens once)
-    #     cap = cv2.VideoCapture(str(video_path))
-    #     if not cap.isOpened():
-    #         print("❌ Cannot open video")
-    #         return
-        
-    #     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    #     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    #     duration = total_frames / fps
-        
-    #     # Seek to start_time
-    #     if start_time > 0:
-    #         cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
-    #         total_frames = int((duration - start_time) * fps)
-        
-    #     print(f"📊 Video: {total_frames} frames @ {fps:.1f}fps = {duration:.1f}s")
-        
-    #     # PRELOAD ALL FRAMES (RGB numpy arrays)
-    #     print("⏳ Loading frames to RAM...")
-    #     all_frames = []
-    #     while True:
-    #         ret, frame = cap.read()
-    #         if not ret:
-    #             break
-    #         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    #         all_frames.append(frame_rgb)
-        
-    #     cap.release()
-    #     h, w = all_frames[0].shape[:2]
-        
-    #     # PRELOAD ALL AUDIO (16kHz mono)
-    #     all_audio = []
-    #     if audio_out:
-    #         print("⏳ Loading audio to RAM...")
-    #         ffmpeg = subprocess.Popen([
-    #             "ffmpeg", "-ss", str(start_time), "-i", str(video_path),
-    #             "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", "16000", "-"
-    #         ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            
-    #         chunk_size = int(16000 * 2 * 0.02)  # 20ms chunks
-    #         while True:
-    #             chunk = ffmpeg.stdout.read(chunk_size)
-    #             if not chunk:
-    #                 break
-    #             all_audio.append(chunk)
-            
-    #         ffmpeg.wait()
-        
-    #     print(f"✅ PRELOADED: {len(all_frames)} frames, {len(all_audio)} audio chunks")
-        
-    #     # Phase 2: SMOOTH STREAMING FROM BUFFER
-    #     frame_idx = 0
-    #     audio_idx = 0
-    #     buffer_size = buffer_frames  # 2s @ 30fps
-        
-    #     while initial_state['video']['video_showing']:
-    #         # PAUSE CHECK (non-blocking)
-    #         if initial_state['video']['video_paused']:
-    #             await asyncio.sleep(0.1)
-    #             continue
-            
-    #         # END OF VIDEO → LOOP
-    #         if frame_idx >= len(all_frames):
-    #             frame_idx = 0
-    #             audio_idx = 0
-    #             continue
-            
-    #         # SEND VIDEO FRAME
-    #         video_frame = OutputImageRawFrame(
-    #             image=all_frames[frame_idx].tobytes(),
-    #             size=(w, h),
-    #             format="RGB"
-    #         )
-    #         await task.queue_frame(video_frame)
-            
-    #         # SEND SYNCED AUDIO
-    #         if audio_out and audio_idx < len(all_audio):
-    #             audio_frame = OutputAudioRawFrame(
-    #                 audio=all_audio[audio_idx],
-    #                 sample_rate=16000,
-    #                 num_channels=1
-    #             )
-    #             await task.queue_frame(audio_frame)
-    #             audio_idx += 1
-            
-    #         frame_idx += 1
-            
-    #         # PRECISE TIMING (buffered = no decode lag!)
-    #         await asyncio.sleep(1.0 / fps)
-        
-    #     print("✅ Video stream ended")
-
-    ###########short buffer 
-
-  
-    # class VideoBuffer:
-    #     """Safe 2-second buffer - smooth playback, low RAM"""
-    #     def __init__(self, max_frames=60):  # 2s @ 30fps
-    #         self.video_buffer = deque(maxlen=max_frames)
-    #         self.audio_buffer = deque(maxlen=max_frames)
-    #         self.fps = 30.0
-    #         self.frame_size = None
-    #         self.running = False
-            
-    #     def put_frame(self, video_frame, audio_chunk=None):
-    #         self.video_buffer.append(video_frame)
-    #         if audio_chunk:
-    #             self.audio_buffer.append(audio_chunk)
-        
-    #     def get_frame(self):
-    #         if self.video_buffer:
-    #             video = self.video_buffer.popleft()
-    #             audio = self.audio_buffer.popleft() if self.audio_buffer else None
-    #             return video, audio
-    #         return None, None
-        
-    #     def is_buffered(self):
-    #         return len(self.video_buffer) > self.maxlen // 2  # 50% full
-
-    # async def show_video(task, video_path: str, start_time: float = 0, audio_out: bool = True):
-    #     """
-    #     BUFFERED VIDEO - Smooth on slow PCs!
-        
-    #     - 2s buffer prevents stutter
-    #     - Auto-drops frames if decode too slow  
-    #     - Max 100MB RAM usage
-    #     - No full PC crashes
-    #     """
-    #     print(f"🎥 BUFFERED video: {video_path}")
-        
-    #     buffer = VideoBuffer(max_frames=60)  # 2s buffer
-        
-    #     # Background decoder task
-    #     decode_task = asyncio.create_task(
-    #         _decode_video_background(task, video_path, start_time, audio_out, buffer)
-    #     )
-        
-    #     # Main playback loop (stable 30fps)
-    #     frame_time = 1.0 / 30  # Fixed playback rate
-    #     startup_delay = 2.0     # Wait for buffer to fill
-        
-    #     print("⏳ Buffering 2s of video...")
-    #     await asyncio.sleep(startup_delay)
-        
-    #     while initial_state['video']['video_showing']:
-    #         if initial_state['video']['video_paused']:
-    #             await asyncio.sleep(0.1)
-    #             continue
-            
-    #         # Get from buffer (non-blocking)
-    #         video_frame, audio_chunk = buffer.get_frame()
-            
-    #         if video_frame is not None:
-    #             # Send video
-    #             await task.queue_frame(video_frame)
-                
-    #             # Send audio if available
-    #             if audio_out and audio_chunk:
-    #                 audio_frame = OutputAudioRawFrame(
-    #                     audio=audio_chunk,
-    #                     sample_rate=16000,
-    #                     num_channels=1
-    #                 )
-    #                 await task.queue_frame(audio_frame)
-            
-    #         await asyncio.sleep(frame_time)  # Perfect 30fps timing
-        
-    #     decode_task.cancel()
-    #     print("✅ Buffered video ended")
-
-    # async def _decode_video_background(task, video_path, start_time, audio_out, buffer):
-    #     """Background thread: decode → buffer (never blocks main loop)"""
-    #     cap = cv2.VideoCapture(str(video_path))
-    #     if not cap.isOpened():
-    #         return
-        
-    #     # Video setup
-    #     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    #     buffer.fps = fps
-    #     if start_time > 0:
-    #         cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
-        
-    #     # Audio setup
-    #     ffmpeg_process = None
-    #     if audio_out:
-    #         ffmpeg_process = subprocess.Popen([
-    #             "ffmpeg", "-ss", str(start_time), "-i", str(video_path),
-    #             "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", "16000", "-"
-    #         ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
-        
-    #     audio_chunk_size = int(16000 * 2 * 0.02)  # 20ms
-        
-    #     try:
-    #         while buffer.running or initial_state['video']['video_showing']:
-    #             # Decode video frame (drop if too slow)
-    #             ret, frame = cap.read()
-    #             if not ret:
-    #                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Loop
-    #                 continue
-                
-    #             # Downscale for slow PCs (optional but recommended)
-    #             frame = cv2.resize(frame, (1280, 720))  # 720p max
-    #             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-    #             h, w = frame_rgb.shape[:2]
-    #             buffer.frame_size = (w, h)
-                
-    #             video_frame = OutputImageRawFrame(
-    #                 image=frame_rgb.tobytes(),
-    #                 size=(w, h),
-    #                 format="RGB"
-    #             )
-                
-    #             # Decode audio chunk
-    #             audio_chunk = None
-    #             if audio_out and ffmpeg_process:
-    #                 audio_bytes = ffmpeg_process.stdout.read(audio_chunk_size)
-    #                 if audio_bytes:
-    #                     audio_chunk = audio_bytes
-                
-    #             # Add to buffer
-    #             buffer.put_frame(video_frame, audio_chunk)
-                
-    #             # Brief yield (don't hog CPU)
-    #             await asyncio.sleep(0.001)
-                
-    #     except asyncio.CancelledError:
-    #         pass
-    #     finally:
-    #         cap.release()
-    #         if ffmpeg_process:
-    #             ffmpeg_process.terminate()
-
-    ######reducing fps and quality - no audio
-    # async def show_video(task, video_path: str,start_time=0,audio_out:bool=True, fps: int = 15):  # 15fps = smooth enough
-    #     """LIGHTWEIGHT version - 720p, 15fps, 30MB max RAM"""
-    #     cap = cv2.VideoCapture(video_path)
-        
-    #     # DOWNSCALE + LOWER FPS = 80% less CPU/RAM
-    #     cap.set(cv2.CAP_PROP_FPS, fps)
-    #     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    #     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        
-    #     frame_time = 1.0 / fps
-    #     buffer = deque(maxlen=30)  # 2s @ 15fps = 30MB
-        
-    #     # Single lightweight loop (no threading overhead)
-    #     while initial_state['video']['video_showing']:
-    #         if initial_state['video']['video_paused']:
-    #             await asyncio.sleep(0.1)
-    #             continue
-                
-    #         ret, frame = cap.read()
-    #         if not ret:
-    #             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    #             continue
-                
-    #         # FASTEST frame processing
-    #         frame = cv2.resize(frame, (1280, 720))
-    #         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-    #         video_frame = OutputImageRawFrame(
-    #             image=frame_rgb.tobytes(),
-    #             size=(1280, 720),
-    #             format="RGB"
-    #         )
-    #         await task.queue_frame(video_frame)
-            
-    #         await asyncio.sleep(frame_time)  # Perfect timing
-        
-    #     cap.release()
-
-    ####reducing quality + audio
-
-    # async def show_video(task, video_path: str,start_time=0, audio_out: bool = True, fps: int = 15):
-    #     """LIGHTWEIGHT video + AUDIO - 720p, 15fps, 50MB max RAM"""
-    #     print(f"🎥 Lightweight video+audio: {video_path} (fps={fps}, audio={audio_out})")
-        
-    #     cap = cv2.VideoCapture(video_path)
-    #     if not cap.isOpened():
-    #         print("❌ Cannot open video")
-    #         return
-        
-    #     # DOWNSCALE + LOWER FPS (80% less CPU/RAM)
-    #     cap.set(cv2.CAP_PROP_FPS, fps)
-    #     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    #     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        
-    #     frame_time = 1.0 / fps
-    #     audio_chunk_size = int(16000 * 2 * 0.02)  # 20ms @ 16kHz mono
-        
-    #     # Audio FFmpeg (parallel to video)
-    #     ffmpeg_process = None
-    #     if audio_out:
-    #         ffmpeg_process = subprocess.Popen([
-    #             "ffmpeg", "-re", "-i", video_path,  # -re = real-time rate
-    #             "-f", "s16le", "-acodec", "pcm_s16le", 
-    #             "-ac", "1", "-ar", "16000", "-"
-    #         ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
-        
-    #     try:
-    #         while initial_state['video']['video_showing']:
-    #             if initial_state['video']['video_paused']:
-    #                 await asyncio.sleep(0.1)
-    #                 continue
-                
-    #             # VIDEO FRAME (main loop timing)
-    #             ret, frame = cap.read()
-    #             if not ret:
-    #                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    #                 continue
-                
-    #             # FAST processing pipeline
-    #             frame = cv2.resize(frame, (1280, 720))
-    #             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-    #             video_frame = OutputImageRawFrame(
-    #                 image=frame_rgb.tobytes(),
-    #                 size=(1280, 720),
-    #                 format="RGB"
-    #             )
-    #             await task.queue_frame(video_frame)
-                
-    #             # AUDIO CHUNK (same timing as video)
-    #             if audio_out and ffmpeg_process:
-    #                 audio_bytes = await asyncio.to_thread(
-    #                     ffmpeg_process.stdout.read, audio_chunk_size
-    #                 )
-    #                 if audio_bytes:
-    #                     audio_frame = OutputAudioRawFrame(
-    #                         audio=audio_bytes,
-    #                         sample_rate=16000,
-    #                         num_channels=1
-    #                     )
-    #                     await task.queue_frame(audio_frame)
-                
-    #             # PERFECT SYNC: Video + Audio @ exact frame_time
-    #             await asyncio.sleep(frame_time)
-                
-    #     finally:
-    #         cap.release()
-    #         if ffmpeg_process:
-    #             ffmpeg_process.terminate()
-    #             try:
-    #                 ffmpeg_process.wait(timeout=1)
-    #             except subprocess.TimeoutExpired:
-    #                 ffmpeg_process.kill()
-        
-    #     print("✅ Lightweight video+audio ended")
-
-    ########################
-    # async def show_video(task, video_path: str, start_time: float = 0, audio_out: bool = True):
-    #     """
-    # Stream video + synced audio to Pipecat pipeline.
-
-    # Fixed issues:
-    # ✅ Proper task parameter (no global)
-    # ✅ Audio/video sync using PTS timestamps  
-    # ✅ Non-blocking state checks
-    # ✅ Proper resource cleanup
-    # ✅ Pipecat frame queuing best practices
-    #     """
-        
-
-    #     print(f"🎥 Starting video: {video_path} (t={start_time}s, audio={audio_out})")
-
-    #     cap = cv2.VideoCapture(str(video_path))
-    #     if not cap.isOpened():
-    #         print("❌ Error: Cannot open video file")
-    #         return
-
-    #     # Video properties
-    #     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    #     delay = 1.0 / fps
-    #     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    #     # Seek to start time
-    #     if start_time > 0:
-    #         cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
-
-    # # Audio ffmpeg process (non-blocking)
-    #     ffmpeg_process = None
-    #     if audio_out:
-    #         ffmpeg_process = subprocess.Popen(
-    #         [
-    #             "ffmpeg", "-ss", str(start_time), "-i", str(video_path),
-    #             "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", "16000", "-"
-    #         ],
-    #         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-    #         bufsize=0  # Unbuffered for low latency
-    #         )
-
-    #     frame_index = 0
-    #     audio_chunk_size = 16000 * 2 * 0.02  # 20ms @ 16kHz mono (640 bytes)
-
-    #     try:
-    #         while True:
-    #             # Check global state (non-blocking)
-    #             if not initial_state['video']['video_showing']:
-    #                 print("⏹️ Video stopped by state")
-    #                 break
-                
-    #             if initial_state['video']['video_paused']:
-    #                 await asyncio.sleep(0.1)  # Poll every 100ms
-    #                 continue
-            
-    #             # Read video frame
-    #             ret, frame = cap.read()
-    #             if not ret:
-    #                 print("🔄 Video ended - looping...")
-    #                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    #                 continue
-            
-    #             # Convert BGR → RGB and create frame
-    #             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    #             h, w = frame_rgb.shape[:2]
-    #             video_frame = OutputImageRawFrame(
-    #             image=frame_rgb.tobytes(),
-    #             size=(w, h),
-    #             format="RGB"
-    #             )
-            
-    #         # Queue video frame
-    #             await task.queue_frame(video_frame)
-                
-    #             # Sync audio (same timestamp)
-    #             if audio_out and ffmpeg_process:
-    #                 audio_bytes = await asyncio.to_thread(
-    #                 ffmpeg_process.stdout.read, int(audio_chunk_size)
-    #                 )
-    #                 if audio_bytes:
-    #                     audio_frame = OutputAudioRawFrame(
-    #                         audio=audio_bytes,
-    #                         sample_rate=16000,
-    #                         num_channels=1
-    #                     )
-    #                     await task.queue_frame(audio_frame)
-                
-    #             frame_index += 1
-    #             print(f"📹 Frame {frame_index}/{total_frames} @ {frame_index/fps:.1f}s")
-                
-    #         # Precise frame timing
-    #             await asyncio.sleep(delay)
-            
-    #     except asyncio.CancelledError:
-    #         print("⏹️ Video cancelled")
-    #     except Exception as e:
-    #         print(f"❌ Video error: {e}")
-    #     finally:
-    #     # Cleanup
-    #         cap.release()
-    #         if ffmpeg_process:
-    #             ffmpeg_process.terminate()
-    #             try:
-    #                 ffmpeg_process.wait(timeout=1)
-    #             except subprocess.TimeoutExpired:
-    #                 ffmpeg_process.kill()
-        
-    #     print("✅ Video playback complete")
-
-    
-        
+         
     async def show_webpage(url, refresh_rate=0.3):
-        global task
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
             page = await browser.new_page()
@@ -1139,7 +670,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             context_aggregator.assistant(),  # Assistant spoken responses
         ]
     )
-    # global task
 
     task = PipelineTask(
         pipeline,
@@ -1170,7 +700,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         # initial_state["video"]['video_task']=video_task
         initial_state["video"]['filepath']=VIDEO_PATH
         
-        ppt_task=asyncio.create_task(show_ppt(task=task,pdf_path="data/ppts/ppt1.pdf"))
+        ppt_task=asyncio.create_task(show_ppt(ppt_dir_path="data/ppts/sih",slide_no=2))
         
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
@@ -1198,7 +728,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     
     #loop.call_later(15, lambda: asyncio.create_task(show_webpage(task,'https://google.com')))
     loop.call_later(15, lambda: asyncio.create_task(tts.push_frame(TTSSpeakFrame('This message is pushed by the STT frame'))))
-    
+    loop.call_later(15, lambda: asyncio.create_task(change_slide(4)))
     
     await runner.run(task)
 
