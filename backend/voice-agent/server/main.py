@@ -28,9 +28,6 @@ import asyncio
 from pipecat.frames.frames import OutputImageRawFrame, OutputAudioRawFrame
 from dotenv import load_dotenv
 from loguru import logger
-#from strands import Agent,tool
-#from strands.models.litellm import LiteLLMModel
-#from strands_tools import calculator # Import the calculator tool
 from typing import List,Tuple
 from pydantic import BaseModel, Field
 print("🚀 Starting Pipecat bot...")
@@ -124,6 +121,8 @@ import io
 from pathlib import Path
 from pdf2image import convert_from_path
 from strands import Agent,tool
+from strands.models.litellm import LiteLLMModel
+from pipecat.processors.frameworks.strands_agents import StrandsAgentsProcessor
 
 task=None
 tts_processor=None
@@ -229,8 +228,8 @@ class CustomObserver(BaseObserver):
 
             
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
-    logger.info(f"Starting bot")
     global task
+    logger.info(f"Starting bot")
     events = EventEmitter()
 
     initial_state={
@@ -244,14 +243,14 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             "show_image":False,
             "filepath":""
         },
-        "ppt":{
+        "ppts":{
             "ppt_showing":True,
             "filepath":"",
             "list":[{
                 'name':"sih",
                 "description":"ppt of SIH",
                 "goal":"Pitch SIH idea",
-                "filepath":"/data/ppts/sih/ppt2.pdf"
+                "ppt_dir_path":"/data/ppts/sih/ppt2.pdf"
             }]
         },
         "user":{
@@ -262,12 +261,12 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         }
     }
 
-    async def convert_pngs_from_pdf(pdf_dir_path:str):
+    async def convert_pngs_from_pdf(ppt_dir_path:str):
         global BASE_DIR
         output_format = "png"
         try:
-            PDF_PATH = BASE_DIR / pdf_dir_path / "ppt.pdf"
-            PNGS_DIR = BASE_DIR / pdf_dir_path / "pngs"
+            PDF_PATH = BASE_DIR / ppt_dir_path / "ppt.pdf"
+            PNGS_DIR = BASE_DIR / ppt_dir_path / "pngs"
             output_dir = Path(PNGS_DIR)
             output_dir.mkdir(exist_ok=True)
             
@@ -293,6 +292,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     png_frames: List[OutputImageRawFrame] = []
 
+    @tool
     async def show_ppt(ppt_dir_path:str,slide_no=1):
         """Tool to present ppt"""
 
@@ -301,9 +301,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         pngs_dir = BASE_DIR / ppt_dir_path / "pngs"
 
         if not pngs_dir.exists():
-            print(f"❌ 'pngs' directory not found at {pngs_dir}")
-            return []
-        
+            print('pngs dont exist for requested ppt w')
+            convert_pngs_from_pdf(ppt_dir_path)
+            
         # Find all page_*.png files and sort naturally (page_1.png, page_2.png, ..., page_10.png)
         pattern = pngs_dir / "page_*.png"
         png_files = sorted(
@@ -341,6 +341,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             print(f'slide no : {slide_no} pushed inot pipeline')
         except Exception as e:
             print(f'Error show_ppt : {e}')
+            return f"Failed to show_ppt {e}"
 
         print(f"✅ Loaded {len(png_frames)} PNG frames into global list")
         return png_frames
@@ -369,7 +370,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         except Exception as e:
             print(f'Error : change_slide : {e}')
             return "Failed to present that slide_no recheck slide_no should be (1-n)"
-
 
     async def show_image(image_path:str):
         img = Image.open(image_path).convert("RGB")
@@ -631,11 +631,30 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     global tts_processor
     tts_processor = custom_processor
     
-    llm = GoogleLLMService(
-        api_key=os.getenv("GEMINI_API_KEY"),
-        model="gemini-2.0-flash-lite", 
-        system_instruction=f"You are clone of {user_name}, and you are in a daily.co meeting You are going to talk with participants in meeting"
+    # llm = GoogleLLMService(
+    #     api_key=os.getenv("GEMINI_API_KEY"),
+    #     model="gemini-2.0-flash-lite", 
+    #     system_instruction=f"You are clone of {user_name}, and you are in a daily.co meeting You are going to talk with participants in meeting"
+    # )
+
+
+    agent = Agent(
+            name="Speaker_Agent",
+            model=LiteLLMModel(
+                client_args={
+                    "api_key":os.getenv('OPENROUTER_API_KEY'),
+                },
+                model_id="openrouter/openai/gpt-4o-mini",
+                params={
+                    'temperature':0.5,
+                    "max_tokens":1000
+                }
+            ),
+            tools=[show_ppt,change_slide],
+            system_prompt=""""You are expert speaker agent in realtime meetings (ex:Zoom,google meet, daily.co) where your job is not only to interact with user but also to present things in meeting and interact wiht user to acheive objective that has been assigned to you wisely doing everythign you can to make it as much close as possible to human touch and feel"""
     )
+
+    strands_agent_llm = StrandsAgentsProcessor(agent=agent)
 
     system_prompt=get_system_prompt(user_name)
 
@@ -660,9 +679,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             stt,
             transcript_processor.user(),
             context_aggregator.user(),  # User responses
-            #custom_processor,
-            #gated_buffer_processor,
-            # llm,  # LLM
+            strands_agent_llm,
             tts,  # TTS
             custom_processor,
             transport.output(),  # Transport bot output
