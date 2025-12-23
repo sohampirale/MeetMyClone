@@ -126,6 +126,11 @@ from pipecat.processors.frameworks.strands_agents import StrandsAgentsProcessor
 
 task=None
 tts_processor=None
+transport_global=None
+custom_processor_global=None
+ppt_dir_path_global=None
+ppt_current_slide_no =None
+
 logger.info("✅ All components loaded successfully!")
 
 load_dotenv(override=True)
@@ -138,8 +143,6 @@ data={
         }
     ]
 }
-
-
 
 
 #custom processors
@@ -201,8 +204,6 @@ class CustomProcessor(FrameProcessor):
         elif isinstance(frame,OpenAILLMContextFrame):
             print(f'OpenAILLMContextFrame frame : {vars(frame)}')
                 
-
-
 class CustomObserver(BaseObserver):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -225,10 +226,9 @@ class CustomObserver(BaseObserver):
         elif isinstance(frame,OpenAILLMContextFrame):
             print(f'OpenAILLMContextFrame : {OpenAILLMContextFrame}')
             
-
-            
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
-    global task
+    global task,transport_global,custom_processor_global
+    transport_global=transport
     logger.info(f"Starting bot")
     events = EventEmitter()
 
@@ -248,9 +248,20 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             "filepath":"",
             "list":[{
                 'name':"sih",
-                "description":"ppt of SIH",
+                "description":
+                    """This PPT is Team DevWise's proposal for Smart India Hackathon 2024, addressing Problem Statement 1664: developing software solutions to enhance educational infrastructure and connectivity in rural India.
+                        It presents "नव शिक्षा", a comprehensive digital platform with separate portals for students, teachers, and parents, featuring AI-driven personalized learning, offline access, data analytics, resource optimization, teacher training, and secure Web3 elements.
+                        The presentation covers the proposed solution, technical approach, feasibility, research references, and expected social, economic, and environmental impacts on rural education.""",
                 "goal":"Pitch SIH idea",
-                "ppt_dir_path":"/data/ppts/sih/ppt2.pdf"
+                "ppt_dir_path":"data/ppts/sih",
+                "slides_description":[
+                    """Slide 1: Title PageThe slide displays the Smart India Hackathon 2024 logo and title at the top. It is labeled "TITLE PAGE" in large text. Key details include Problem Statement ID 1664, full title "Develop Software Solutions to Enhance Educational Infrastructure and Connectivity in Rural Areas", Theme: Miscellaneous, Category: Software, and Team Name: DevWise. A decorative graphic shows a brain with circuit patterns and binary code on the right side.""",
+                    """Slide 2: Proposed Solution,The slide introduces the solution named "नव शिक्षा" with the team logo DevWise. It is divided into sections: Proposed Solution describes a digital platform with separate logins for students, teachers, and parents, featuring personalized learning, teacher training, parental guidance, data analytics, resource management, and AI planning. The right side explains how it addresses rural challenges through tailored portals, and lists innovations like AI personalization, community sections, AI attendance, live classes, Web3 security, and anonymous feedback.""",
+                    """Slide 3: Technical ApproacThe slide details the technical workflow and tech stack. The left side shows user login branching into student, teacher, and parent paths with features like personalized content, AI recommendations, attendance tracking, progress reports, and community tools. The right side lists the tech stack: frameworks (Node.js, Flask, React, Next.js), databases (MongoDB, SQLite), languages (Python, JavaScript, HTML/CSS), cloud (AWS, Azure), AI/ML tools (Scikit-learn, PyTorch), and Web3 with Solana blockchain.""",
+                    """Slide 4: Feasibility and Viability,This slide focuses on feasibility and viability. A diagram on the left shows how cloud and AI tools enable scalability, AI capabilities, and personalized learning despite implementation challenges. A central balance scale illustrates challenges like infrastructure, connectivity, community acceptance, and adoption risks. On the right, a flowchart outlines solutions: developing offline access, conducting pilot programs, and optimizing internet connectivity.""",
+                    """Slide 5: Impact and Benefits,The slide outlines impact and benefits. Left side describes potential impact: improved outcomes for rural students, teacher empowerment through training, and greater parental involvement, shown in a diagram converging to positive rural education transformation. Right side lists benefits: social (bridging urban-rural gap), economic (better job opportunities and growth), environmental (reduced paper use), illustrated with icons and arrows leading to positive impacts.""",
+                    """Slide 6: Research and References,This slide presents research backing the solution. It covers the condition of rural education citing ASER 2022 report on low literacy. Technology in rural education references UNESCO ICT report and World Economic Forum on digital initiatives. Pilot projects highlight EkStep Foundation's open platforms. Benefits section cites Brookings report on e-learning and J-PAL study on low-cost tools improving literacy and numeracy, with hyperlinks provided for each source."""
+                ]
             }]
         },
         "user":{
@@ -296,7 +307,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     async def show_ppt(ppt_dir_path:str,slide_no=1):
         """Tool to present ppt"""
 
-        global png_frames,BASE_DIR,task
+        global png_frames,BASE_DIR,task,ppt_dir_path_global,ppt_current_slide_no
         
         pngs_dir = BASE_DIR / ppt_dir_path / "pngs"
 
@@ -313,7 +324,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         
         if not png_files:
             print("❌ No page_*.png files found")
-            return []
+            return "Pngs not availaible for this ppt"
         
         png_frames = []
         for i, img_path in enumerate(png_files, 1):
@@ -329,6 +340,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                     size=size,
                     format="RGB"
                 )
+
+    
                 png_frames.append(frame)
                 print(f"✅ Loaded page_{i}: {img_path.name} ({width}x{height})")
                 
@@ -338,11 +351,30 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         try:
             frame = png_frames[slide_no-1]
             await task.queue_frames([frame])
-            print(f'slide no : {slide_no} pushed inot pipeline')
         except Exception as e:
             print(f'Error show_ppt : {e}')
             return f"Failed to show_ppt {e}"
 
+        ppt_dir_path_global=Path(ppt_dir_path).resolve()
+        ppt_current_slide_no=slide_no
+        print(f'slide no : {slide_no} pushed inot pipeline')
+
+        slide_description=""
+        all_ppt_lists=initial_state['ppts']['list']
+
+        for ppt in all_ppt_lists:
+            if ppt['ppt_dir_path']==ppt_dir_path_global:
+                slide_description=ppt['slides_description'][slide_no-1]
+
+        screen_status={
+            "role":'system',
+            "showing_image":False,
+            "showing_video":False,
+            "showing_ppt":True,
+            "slide_no":ppt_current_slide_no,
+            "slide_description":slide_description ,
+            "total_slides_in_this_ppt":len(png_frames)
+        }
         print(f"✅ Loaded {len(png_frames)} PNG frames into global list")
         return png_frames
         
@@ -352,24 +384,43 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             Args : 
             slide_no : int = from 1 - n
         """
-        global png_frames
-
+        global png_frames,transport_global,custom_processor_global,ppt_dir_path_global,ppt_current_slide_no
+        print(f'slide no : {slide_no}')
         try:
             if not png_frames:
-                return "No ppt is loaded into memory yet, call the tool 'show_ppt' with the ppt_dir_path"
+                return "No ppt is loaded into memory yet, call the tool 'show_ppt' with the ppt_dir_path from context given to you"
+
+            slide_description=""
 
             if slide_no> len(png_frames):
                 frame = png_frames[-1]
-                await task.queue_frames([frame])
-                return f"Total slides of ppt are : {len(png_frames)} last slide is being presented onto the screen"
+                # await task.queue_frames([frame])
+                await custom_processor_global.push_frame(frame)
+                ppt_current_slide_no=len(png_frames)
+
+                all_ppt_lists=initial_state['ppts']['list']
+                for ppt in all_ppt_lists:
+                    if Path(ppt['ppt_dir_path'])==ppt_dir_path_global:
+                        slide_description=ppt['slides_description'][-1]
+
+                return f"Total slides of ppt are : {len(png_frames)} last slide is being presented onto the screen, description of last slide is : {slide_description}"
 
             frame = png_frames[slide_no-1]
-            await task.queue_frames([frame])
-            return "Requested slide is presented onto the screen"
+
+            await custom_processor_global.push_frame(frame)
+            all_ppt_lists=initial_state['ppts']['list']
+            ppt_current_slide_no=slide_no
+
+            for ppt in all_ppt_lists:
+                if Path(ppt['ppt_dir_path']).resolve()==ppt_dir_path_global:
+                    slide_description=ppt['slides_description'][slide_no-1]
+                    break
+
+            return f"Requested slide is presented onto the screen, description of that slide is : {slide_description}"
 
         except Exception as e:
             print(f'Error : change_slide : {e}')
-            return "Failed to present that slide_no recheck slide_no should be (1-n)"
+            return f"Failed to present that slide_no recheck slide_no should be (1-{len(png_frames)})"
 
     async def show_image(image_path:str):
         img = Image.open(image_path).convert("RGB")
@@ -383,18 +434,14 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         await task.queue_frames([frame])
 
     # async def stop_showing_image(task, image_path:str):
-    #     img = Image.open(image_path).convert("RGB")
-    #     arr = np.array(img)
+        #     img = Image.open(image_path).convert("RGB")
+        #     arr = np.array(img)
+        #     height, width, channels = arr.shape
+        #     size = (width, height)
+        #     data = arr.tobytes()
+        #     frame = OutputImageRawFrame(image=data,size=size,format="RGB")
+        #     await task.queue_frames([frame])
 
-    #     height, width, channels = arr.shape
-    #     size = (width, height)
-    #     data = arr.tobytes()
-
-    #     frame = OutputImageRawFrame(image=data,size=size,format="RGB")
-    #     await task.queue_frames([frame])
-
-
-    
     def stop_showing_image():
         events.emit("image.stop_showing_image",{})
 
@@ -628,8 +675,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         api_key=os.getenv("CARTESIA_API_KEY"),
         voice_id=voice_clone_id, 
     )
-    global tts_processor
-    tts_processor = custom_processor
+
+    custom_processor_global = custom_processor
     
     # llm = GoogleLLMService(
     #     api_key=os.getenv("GEMINI_API_KEY"),
@@ -659,12 +706,44 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     system_prompt=get_system_prompt(user_name)
 
     # llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
+    all_ppt_lists=initial_state['ppts']["list"]
+    ppts_context=[]
+
+    for ppt in all_ppt_lists:
+        temp ={
+            "ppt_dir_path":ppt["ppt_dir_path"],
+            "description":ppt["description"],
+            "goal":ppt["goal"]
+        }
+        ppts_context.append(temp)
+
+    images_context=[]
+    videos_context=[]
 
     messages = [
         {
             "role": "system",
             "content": system_prompt,
         },
+        {
+            "role":'system',
+            "content":"""In this obj ,all availaible images are mentioned in short""",
+            "images_context":images_context
+        },
+        {
+            "role":'system',
+            "content":"""In this obj ,all availaible videos are mentioned in short""",
+            "videos_context":videos_context
+        },
+        {
+            #ppts
+            "role":'system',
+            "content":"""In this obj ,all availaible ppts are mentioned in short""",
+            "ppts_context":ppts_context
+        },
+        {
+            #current screen status
+        }
     ]
 
     context = LLMContext(messages)
