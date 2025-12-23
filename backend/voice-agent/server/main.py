@@ -1,24 +1,3 @@
-#
-# Copyright (c) 2024–2025, Daily
-#
-# SPDX-License-Identifier: BSD 2-Clause License
-#
-
-"""Pipecat Quickstart Example.
-
-The example runs a simple voice AI bot that you can connect to using your
-browser and speak with it. You can also deploy this bot to Pipecat Cloud.
-
-Required AI services:
-- Deepgram (Speech-to-Text)
-- OpenAI (LLM)
-- Cartesia (Text-to-Speech)
-
-Run the bot using::
-
-    uv run bot.py
-"""
-
 import os
 import cv2
 import time
@@ -123,6 +102,20 @@ from pdf2image import convert_from_path
 from strands import Agent,tool
 from strands.models.litellm import LiteLLMModel
 from pipecat.processors.frameworks.strands_agents import StrandsAgentsProcessor
+from pipecat.transports.daily.transport import (
+    DailyTransport, DailyParams, DailyOutputTransportMessageFrame
+)
+from pipecat.transports.daily.utils import (
+    DailyRESTHelper, DailyRoomParams, DailyRoomProperties
+)
+# from pipecat.transports.daily.utils import DailyRESTHelper, DailyRoomParams, DailyRoomProperties
+from pipecat.transports.services.helpers.daily_rest import (
+    DailyRESTHelper, DailyRoomParams, DailyRoomProperties
+)
+import time, os
+import aiohttp
+from pipecat.transports.daily.transport import DailyParams
+
 
 task=None
 tts_processor=None
@@ -130,6 +123,7 @@ transport_global=None
 custom_processor_global=None
 ppt_dir_path_global=None
 ppt_current_slide_no =None
+png_frames: List[OutputImageRawFrame] = []
 
 logger.info("✅ All components loaded successfully!")
 
@@ -226,6 +220,7 @@ class CustomObserver(BaseObserver):
         elif isinstance(frame,OpenAILLMContextFrame):
             print(f'OpenAILLMContextFrame : {OpenAILLMContextFrame}')
             
+
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     global task,transport_global,custom_processor_global
     transport_global=transport
@@ -242,6 +237,19 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         "image":{
             "show_image":False,
             "filepath":""
+        },
+        "images":{
+            "image_showing":False,
+            "list":[
+                {
+                    "image_path":"data/images/avatar.png",
+                    "description":'avatar of soham pirale'
+                },
+                {
+                    "image_path":"data/images/github_profile.png",
+                    "description":"Github profile screenshot of soham pirale"
+                }
+            ]
         },
         "ppts":{
             "ppt_showing":True,
@@ -263,6 +271,25 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                     """Slide 6: Research and References,This slide presents research backing the solution. It covers the condition of rural education citing ASER 2022 report on low literacy. Technology in rural education references UNESCO ICT report and World Economic Forum on digital initiatives. Pilot projects highlight EkStep Foundation's open platforms. Benefits section cites Brookings report on e-learning and J-PAL study on low-cost tools improving literacy and numeracy, with hyperlinks provided for each source."""
                 ]
             }]
+        },
+        "links":{
+            "list":[
+                {
+                    "link":'https://github.com/sohampirale',
+                    "description":'Github url of soham pirale',
+                    "goal":'Send this to build credibility when project building is related'
+                },
+                {
+                    "link":'https://github.com/sohampirale/n8n_clone',
+                    "description":'n8n clone project by soham pirale',
+                    "goal":'Full stack n8n clone , send/show this to build strong credibility about ai and n8n like projects'
+                },
+                 {
+                    "link":'https://github.com/sohampirale/DockHostV2',
+                    "description":'DockHost SSH enabled project by soham pirale',
+                    "goal":'Docker and SSH container enabling project by soham pirale, send/show this to build strong credibility about Devops and Docker related projects'
+                }
+            ]
         },
         "user":{
             "given_avatar":True
@@ -301,11 +328,15 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             print(f'Error show_ppt : {e}')
             return f"Error: {e}"
 
-    png_frames: List[OutputImageRawFrame] = []
 
     @tool
-    async def show_ppt(ppt_dir_path:str,slide_no=1):
-        """Tool to present ppt"""
+    async def show_ppt(ppt_dir_path:str,slide_no=1,tts_message:str=""):
+        """Tool to present ppt
+            Args:
+            ppt_dir_path:str = exact same dir path given in context messages about ppts
+            slide_no:int(1 to n) (optional) 1 by default
+            tts_message:str (optional) = Temporary filler message for user in realtime meeting (ex: Just a moment, or anything that you find appripriate ), this tts_message will immediately be converted to audio and sent to user to show low latency, (empty string by default)
+        """
 
         global png_frames,BASE_DIR,task,ppt_dir_path_global,ppt_current_slide_no
         
@@ -379,10 +410,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         return png_frames
         
     @tool
-    async def change_slide(slide_no:int):
+    async def change_slide(slide_no:int,tts_message:str=""):
         """Tool to change slide of the ppt presentation in meeting screen
             Args : 
             slide_no : int = from 1 - n
+            tts_message:str (optional) = Temporary filler message for user in realtime meeting (ex: Just a moment, or anything that you find appripriate ), this tts_message will immediately be converted to audio and sent to user to show low latency
         """
         global png_frames,transport_global,custom_processor_global,ppt_dir_path_global,ppt_current_slide_no
         print(f'slide no : {slide_no}')
@@ -420,7 +452,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
         except Exception as e:
             print(f'Error : change_slide : {e}')
-            return f"Failed to present that slide_no recheck slide_no should be (1-{len(png_frames)})"
+            return f"Failed to present that slide_no recheck slide_no )"
 
     async def show_image(image_path:str):
         img = Image.open(image_path).convert("RGB")
@@ -522,6 +554,22 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         
         print(f'------VIDEO RESTARTED AT TIMESTAMP : {start_time}-------')
          
+    @tool
+    async def send_message(message:str):
+        """Tool to send message in the realtime meeting to the user
+        Args:
+        message:str = Exact message will be sent to the user in chat
+        """
+        print('INSIDE send_message')
+        try:
+            await transport.send_prebuilt_chat_message(
+                message,
+                user_name="MeetingBot"
+            )
+            return "message sent"
+        except Exception as e:
+            print(f'Error send_message : {e}')
+            return f"Error : {e}"
          
     should_present_webpage=True
 
@@ -697,7 +745,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                     "max_tokens":1000
                 }
             ),
-            tools=[show_ppt,change_slide],
+            tools=[show_ppt,change_slide,send_message],
             system_prompt=""""You are expert speaker agent in realtime meetings (ex:Zoom,google meet, daily.co) where your job is not only to interact with user but also to present things in meeting and interact wiht user to acheive objective that has been assigned to you wisely doing everythign you can to make it as much close as possible to human touch and feel"""
     )
 
@@ -719,7 +767,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     images_context=[]
     videos_context=[]
-
+    links_context=initial_state['links']['list']
+        
     messages = [
         {
             "role": "system",
@@ -742,7 +791,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             "ppts_context":ppts_context
         },
         {
-            #current screen status
+            "role":"system",
+            "content":"All links and their goal and descriptions will be attached here, use them wisely and send them in chat whenever appropriate proactively",
+            "links":links_context
+        },
+        {
+            "role":'system',
+            "content":'Current status of presenting/displaying images/videos/ppt will be mentioned here, currently nothing is being displyed'
         }
     ]
 
@@ -773,6 +828,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
+        idle_timeout_secs=60,  # Cancel if no activity for 60 seconds
+        cancel_on_idle_timeout=True,  #
         observers=[RTVIObserver(rtvi)],
     )
 
@@ -809,6 +866,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     runner = PipelineRunner(handle_sigint=runner_args.handle_sigint)
 
+    @task.event_handler("on_idle_timeout")
+    async def on_idle_timeout(task):
+        logger.info("No user joined - cleaning up")
+        await task.cancel()
 
     #fake stop_showing_image call
     loop = asyncio.get_event_loop()
@@ -822,13 +883,36 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     
     # loop.call_later(25, lambda: start_video_at_timestamp(5))
     
+
     #loop.call_later(15, lambda: asyncio.create_task(show_webpage(task,'https://google.com')))
     loop.call_later(15, lambda: asyncio.create_task(tts.push_frame(TTSSpeakFrame('This message is pushed by the STT frame'))))
     loop.call_later(15, lambda: asyncio.create_task(change_slide(4)))
+    loop.call_later(15, lambda: asyncio.create_task(send_message('hey there')))
+
     
     await runner.run(task)
 
-
+async def create_chat_room() -> tuple[str, str]:
+    """Create a Daily room with chat enabled."""
+    async with aiohttp.ClientSession() as session:
+        helper = DailyRESTHelper(
+            daily_api_key=os.getenv("DAILY_API_KEY"),
+            aiohttp_session=session
+        )
+        
+        # Create room with custom properties
+        room = await helper.create_room(DailyRoomParams(
+            properties=DailyRoomProperties(
+                exp=time.time() + 3600,  # 1 hour expiry
+                enable_chat=True
+            )
+        ))
+        
+        # Generate token
+        token = await helper.get_token(room.url, expiry_time=3600)
+        return room.url,token
+    
+    
 async def bot(runner_args: RunnerArguments):
     """Main bot entry point for the bot starter."""
 
@@ -880,8 +964,9 @@ async def bot(runner_args: RunnerArguments):
         "daily": lambda: DailyParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            video_in_enabled=False,    # bot does NOT consume video
+            video_in_enabled=False,   
             video_out_enabled=True,   
+            api_key=os.getenv('DAILY_API_KEY'),
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
             turn_analyzer=LocalSmartTurnAnalyzerV3(),
         ),
@@ -895,7 +980,19 @@ async def bot(runner_args: RunnerArguments):
         ),
     }
 
-    
+    #TODO : add room and token creation to different endpoint - prod
+
+    # room_url, token = await create_chat_room()
+    # transport = DailyTransport(room_url, token, "Bot", DailyParams(
+    #                 audio_in_enabled=True,
+    #                 audio_out_enabled=True,
+    #                 video_out_enabled=True,  
+    #                 # api_key=os.getenv('DAILY_API_KEY'),
+    #                 vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+    #                 turn_analyzer=LocalSmartTurnAnalyzerV3(),
+    #             )
+    # )
+
 
     transport = await create_transport(runner_args, transport_params)
 
