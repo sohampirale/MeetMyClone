@@ -115,7 +115,10 @@ from pipecat.transports.services.helpers.daily_rest import (
 import time, os
 import aiohttp
 from pipecat.transports.daily.transport import DailyParams
-
+from helpers import StatementJudgeContextFilter,CompletenessCheck,OutputGate
+from pipecat.sync.event_notifier import EventNotifier
+from prompts import CLASSIFIER_SYSTEM_INSTRUCTION
+from pipecat.processors.user_idle_processor import UserIdleProcessor
 
 task=None
 tts_processor=None
@@ -822,6 +825,80 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         ]
     )
 
+    ####working with turn detection enabled pipeline
+
+    system_instruction="""You are great voice ai agent"""
+
+    async def block_user_stopped_speaking(frame):
+            return not isinstance(frame, UserStoppedSpeakingFrame)
+
+    async def pass_only_llm_trigger_frames(frame):
+            return (
+                isinstance(frame, OpenAILLMContextFrame)
+                or isinstance(frame, LLMMessagesFrame)
+                or isinstance(frame, StartInterruptionFrame)
+                or isinstance(frame, StopInterruptionFrame)
+                or isinstance(frame, FunctionCallInProgressFrame)
+                or isinstance(frame, FunctionCallResultFrame)
+            )
+
+    async def discard_all(frame):
+        return False
+
+
+    notifier=EventNotifier()
+
+    statement_llm = GoogleLLMService(
+        name="StatementJudger",
+        api_key=os.getenv("GEMINI_API_KEY"),
+        model="gemini-2.0-flash-lite",
+        temperature=0.0,
+        system_instruction=CLASSIFIER_SYSTEM_INSTRUCTION,
+    )
+
+    statement_judge_context_filter=StatementJudgeContextFilter(notifier)
+    completeness_check=CompletenessCheck(notifier)
+
+    conversation_llm =StrandsAgentsProcessor(agent=agent)
+    output_gate= OutputGate(notifier=notifier,start_open=True)
+
+    async def user_idle_notifier(frame):
+            await notifier.notify()
+
+    user_idle = UserIdleProcessor(callback=user_idle_notifier, timeout=5.0)
+
+    pipeline = Pipeline(
+        [
+            
+            rtvi,
+            transport.input(),
+            # stt_mute_filter,
+            stt,  # Deepgram transcribes incoming audio
+            context_aggregator.user(),
+            ParallelPipeline(
+                [
+                    FunctionFilter(filter=block_user_stopped_speaking),
+                ],
+                [
+                    statement_judge_context_filter,
+                    statement_llm,
+                    completeness_check,
+                    FunctionFilter(filter=discard_all),
+                ],
+                [
+                    FunctionFilter(filter=pass_only_llm_trigger_frames),
+                    conversation_llm,
+                    output_gate,
+                ],
+            ),
+            tts,
+            # user_idle, #TODO use this later if needed
+            transport.output(),
+            context_aggregator.assistant(),
+            
+        ]
+    )
+
     task = PipelineTask(
         pipeline,
         params=PipelineParams(
@@ -1003,4 +1080,5 @@ if __name__ == "__main__":
     from pipecat.runner.run import main
 
     main()
+
 
